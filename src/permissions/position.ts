@@ -3,7 +3,10 @@
  * installs in the user's Turnkey sub-organization, rendered exactly.
  */
 import { PublicKey } from "@solana/web3.js";
-import { buildStrategyAllowPolicyBody } from "./strategy-allow";
+import {
+  buildStrategyAllowPolicyBody, strategyAllowCondition, strategyAllowPolicyName, strategyAllowPolicyNames,
+  CURRENT_STRATEGY_ALLOW_GENERATION, type StrategyAllowGeneration,
+} from "./strategy-allow";
 import { buildStrategyDenyPolicyBody } from "./strategy-deny";
 
 export interface PositionParams {
@@ -58,7 +61,11 @@ export function validatePositionParams(p: unknown): asserts p is PositionParams 
   }
 }
 
-/** The exact ALLOW and DENY a position with these parameters installs. */
+/**
+ * The exact ALLOW and DENY a position with these parameters installs today (the CURRENT strategy generation,
+ * `s2-relay-close-bound`). A position whose ALLOW was installed by its security update carries the same text
+ * under the name `tax-alpha-allow-<id>-s2` (see `acceptedAllowPolicyNames`).
+ */
 export function expectedPositionPolicies(params: PositionParams): ExpectedPositionPolicies {
   validatePositionParams(params);
   const enrollmentId = params.enrollmentId ?? "unknown";
@@ -69,4 +76,30 @@ export function expectedPositionPolicies(params: PositionParams): ExpectedPositi
     allow: { policyName: named ? allow.policyName : null, effect: allow.effect, consensus: allow.consensus, condition: allow.condition, notes: allow.notes },
     deny: { policyName: named ? deny.policyName : null, effect: deny.effect, consensus: deny.consensus, condition: deny.condition, notes: deny.notes },
   };
+}
+
+/** The strategy generation `expectedPositionPolicies` renders. */
+export const CURRENT_GENERATION: StrategyAllowGeneration = CURRENT_STRATEGY_ALLOW_GENERATION;
+
+/**
+ * The ALLOW of an older, SUPERSEDED generation (`s1-agent-v9-swap`), which positions created before 2026-11-03
+ * installed and keep until the user runs the in-app "Security update". Same redemption alternatives and
+ * consensus; only the swap alternative differs (it lacks the relay-close bound). The verifier recognises it so
+ * it can say "superseded" instead of "mismatch".
+ */
+export function supersededAllowPolicy(params: PositionParams, generation: Exclude<StrategyAllowGeneration, "s2-relay-close-bound"> = "s1-agent-v9-swap"): ExpectedPolicy {
+  validatePositionParams(params);
+  const current = expectedPositionPolicies(params).allow;
+  return {
+    policyName: params.enrollmentId !== undefined ? strategyAllowPolicyName(params.enrollmentId) : null,
+    effect: current.effect,
+    consensus: current.consensus,
+    condition: strategyAllowCondition(params, generation),
+    notes: current.notes,
+  };
+}
+
+/** Names the current ALLOW may carry: as set up, or as installed by the security update. Informational. */
+export function acceptedAllowPolicyNames(params: PositionParams): string[] {
+  return params.enrollmentId !== undefined ? strategyAllowPolicyNames(params.enrollmentId) : [];
 }

@@ -14,8 +14,9 @@
  *   3. For every `hand` entry, hashes the pinned upstream declarations and compares them with UPSTREAM.json.
  *      A changed hash means upstream moved and the hand port must be re-checked by a person.
  *   4. Renders the permission policies for every test vector with BOTH the upstream builder and this
- *      repository's builder, and requires byte equality (the upstream relay address is substituted with the
- *      vector's placeholder before comparing; it is never written to disk).
+ *      repository's builder, and requires byte equality — the CURRENT generation and every SUPERSEDED
+ *      generation the verifier recognises (the upstream relay address is substituted with the vector's
+ *      placeholder before comparing; it is never written to disk).
  *   5. Lists every file in this repository (git ls-files + untracked) and fails on anything that is not in
  *      the manifest or STATIC_FILES, and on any import that is not relative or an allowed package.
  */
@@ -165,10 +166,11 @@ for (const e of MANIFEST) {
  * An example Turnkey `list_policies` response for a vector (all ids are random placeholders):
  *   position-a — the position's two policies plus an unrelated policy of the user's own: PASSES.
  *   position-b — the ALLOW's SOL-redemption destinations carry one extra (attacker) wallet: FAILS.
+ *   position-c — a position set up before 2026-11-03: its ALLOW is the SUPERSEDED s1 text: WARNS (superseded).
  */
 const ATTACKER_PLACEHOLDER = "E2zF382BRWbzYQYgHVeUUEDrn1mpib7ZzyG8RjRFTgHw";
-function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Record<string, unknown> }) {
-  const allow = { ...e.allow };
+function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Record<string, unknown> }, s1Allow: Record<string, unknown>) {
+  const allow = v === "position-c" ? { ...s1Allow } : { ...e.allow };
   if (v === "position-b") {
     const c = String(allow.condition);
     const at = c.lastIndexOf("j.accounts[1].account_key in ['");
@@ -178,7 +180,9 @@ function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Rec
   }
   const ids = v === "position-a"
     ? ["0b8f3c52-6d0e-4f43-9a51-6f2f0d6a1a01", "0b8f3c52-6d0e-4f43-9a51-6f2f0d6a1a02", "0b8f3c52-6d0e-4f43-9a51-6f2f0d6a1a03"]
-    : ["5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f01", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f02", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f03"];
+    : v === "position-b"
+      ? ["5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f01", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f02", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f03"]
+      : ["a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a01", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a02", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a03"];
   return {
     policies: [
       { policyId: ids[0], policyName: allow.policyName, effect: allow.effect, consensus: allow.consensus, condition: allow.condition, notes: allow.notes },
@@ -189,7 +193,7 @@ function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Rec
 }
 
 // ── 4: permission text, upstream vs this repository, byte for byte ───────────────────────────────────
-const vectors = ["position-a", "position-b"];
+const vectors = ["position-a", "position-b", "position-c"];
 try {
   const upAllow = await import(join(UP, "src/lib/strategy/custody/strategy-allow.ts"));
   const upSetup = await import(join(UP, "src/lib/strategy/custody/setup.ts"));
@@ -208,7 +212,13 @@ try {
     if (expected.allow.condition.includes(upRelay) || JSON.stringify(expected).includes(upRelay)) throw new Error("relay substitution failed");
     const mine = ours.expectedPositionPolicies(params);
     if (JSON.stringify(mine) !== JSON.stringify(expected)) fail(`permission text for ${v}: this repository's renderer differs from upstream`);
-    for (const [suffix, body] of [["expected", expected], ["export", exampleExport(v, expected)]] as const) {
+    // Every superseded generation the verifier recognises, rendered by upstream's own generation parameter.
+    if (upAllow.CURRENT_STRATEGY_ALLOW_GENERATION !== "s2-relay-close-bound") fail(`upstream's current strategy generation is '${upAllow.CURRENT_STRATEGY_ALLOW_GENERATION}', not s2 — port it`);
+    const upS1 = sub(upAllow.strategyAllowCondition(upArgs, "s1-agent-v9-swap"));
+    if (upS1.includes(upRelay)) throw new Error("relay substitution failed (s1)");
+    const s1Allow = { ...expected.allow, condition: upS1 };
+    if (ours.supersededAllowPolicy(params, "s1-agent-v9-swap").condition !== upS1) fail(`superseded s1 permission text for ${v}: this repository's renderer differs from upstream`);
+    for (const [suffix, body] of [["expected", expected], ["export", exampleExport(v, expected, s1Allow)]] as const) {
       const path = join(ROOT, `test/vectors/${v}.${suffix}.json`);
       const text = JSON.stringify(body, null, 2) + "\n";
       const cur = existsSync(path) ? readFileSync(path, "utf8") : null;

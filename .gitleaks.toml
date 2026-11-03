@@ -1,0 +1,16 @@
+# gitleaks configuration for this repository: the default rules, plus an allowlist for the three shapes the
+# generic-api-key rule mistakes for secrets. Every one of them is public by construction:
+#   - Turnkey policy text comparing a key to a base58 Solana address (`account_key == '<address>'`);
+#   - sha256 content hashes of upstream declarations in UPSTREAM.json;
+#   - the public Memo program id, used as the "no lookup tables" sentinel.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "public Solana addresses inside policy text, upstream content hashes, the Memo program id"
+regexTarget = "match"
+regexes = [
+  "(program_key|account_key|address_table_key)\\s*(==|!=)\\s*'[1-9A-HJ-NP-Za-km-z]{32,44}'",
+  ":\\s*\"[0-9a-f]{64}\"",
+  "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+]

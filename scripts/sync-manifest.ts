@@ -118,15 +118,30 @@ export const MANIFEST: Entry[] = [
     kind: "hand", out: "src/permissions/agent-spot-allow.ts",
     pins: [
       { upstream: `${A}/allow-condition.ts`, decls: ["SIGN_TRANSACTION_KIND", "walletBinding", "SOLANA_ADDRESS", "signerBinding", "buildAgentAllowCondition"] },
-      { upstream: `${A}/venue-registry.ts`, decls: ["CURRENT_ALLOW_SHAPE", "turnkeyAllowConditionFor", "instructionPredicate", "boundPrograms"] },
+      {
+        upstream: `${A}/venue-registry.ts`,
+        decls: [
+          "CURRENT_ALLOW_SHAPE", "turnkeyAllowConditionFor", "instructionPredicate", "boundPrograms", "programsFor",
+          "shapeBindsSigningWallet", "shapeAdmitsFallbackRouters", "shapeBoundsPriorityFee", "shapeBoundsRelayCloses",
+          "shapeAllowsRentPayback", "shapeAllowsAgentCloses", "shapeAllowsExistingPayback",
+        ],
+      },
       { upstream: `${A}/relay-rent-payback-policy.ts`, decls: ["AGENT_RENT_PAYBACK_MAX_LAMPORTS", "agentWsolAta", "relayRentPaybackClauses"] },
-      { upstream: `${A}/agent-close-policy.ts`, decls: ["agentTokenCloseClause"] },
+      { upstream: `${A}/agent-close-policy.ts`, decls: ["agentTokenCloseClause", "agentRelayCloseBoundClause"] },
       { upstream: `${A}/router-fallback-policy.ts`, decls: ["JUPITER_SAR_ACCOUNTS", "V8_FALLBACK_ROUTERS", "AGENT_JUPITER_TRADE_PROGRAMS", "jupiterSpotBranchClauses", "fallbackBranch"] },
     ],
   },
   {
     kind: "hand", out: "src/permissions/strategy-allow.ts",
-    pins: [{ upstream: `${S}/custody/strategy-allow.ts`, decls: ["NO_LOOKUP_TABLES", "validate", "strategySwapClause", "strategyTokenRedeemClause", "strategySolRedeemClause", "strategyAllowCondition", "STRATEGY_ALLOW_NOTES", "strategyAllowPolicyName", "buildStrategyAllowPolicyBody"] }],
+    pins: [{
+      upstream: `${S}/custody/strategy-allow.ts`,
+      decls: [
+        "NO_LOOKUP_TABLES", "validate", "StrategyAllowGeneration", "ALL_STRATEGY_ALLOW_GENERATIONS", "CURRENT_STRATEGY_ALLOW_GENERATION",
+        "AGENT_SHAPE_FOR", "strategyClosesToSelfClause", "strategySwapClause", "strategyTokenRedeemClause", "strategySolRedeemClause",
+        "strategyAllowCondition", "STRATEGY_ALLOW_NOTES", "strategyAllowPolicyName", "strategyAllowUpgradePolicyName",
+        "strategyAllowPolicyNames", "buildStrategyAllowPolicyBody",
+      ],
+    }],
   },
 
   // ── Upstream unit tests ──────────────────────────────────────────────────────────────────────────
@@ -147,14 +162,15 @@ export const MANIFEST: Entry[] = [
 
 /** Files that are not generated and carry no upstream code. Everything else in the repo must be in MANIFEST. */
 export const STATIC_FILES = [
-  ".gitignore", "LICENSE", "README.md", "SECURITY.md", "CHANGES-FROM-UPSTREAM.md", "UPSTREAM.json",
+  ".gitignore", ".gitleaks.toml", "LICENSE", "README.md", "SECURITY.md", "CHANGES-FROM-UPSTREAM.md", "UPSTREAM.json",
   "package.json", "bun.lock", "tsconfig.json",
-  "scripts/sync.ts", "scripts/sync-manifest.ts", "scripts/sync-from-upstream.md",
+  "scripts/sync.ts", "scripts/sync-manifest.ts", "scripts/sync-from-upstream.md", "scripts/scan.ts",
   "src/rules/index.ts", "src/permissions/index.ts", "src/permissions/position.ts",
-  "src/verify/index.ts", "src/verify/verify.ts", "src/verify/cli.ts", "src/verify/export.ts",
+  "src/verify/index.ts", "src/verify/verify.ts", "src/verify/cli.ts", "src/verify/export.ts", "src/verify/fetch.ts",
   "test/permissions.test.ts", "test/verify.test.ts", "test/rules-extra.test.ts", "test/cli.test.ts",
   "test/vectors/position-a.params.json", "test/vectors/position-a.expected.json", "test/vectors/position-a.export.json",
   "test/vectors/position-b.params.json", "test/vectors/position-b.expected.json", "test/vectors/position-b.export.json",
+  "test/vectors/position-c.params.json", "test/vectors/position-c.expected.json", "test/vectors/position-c.export.json",
   "test/vectors/README.md",
 ];
 

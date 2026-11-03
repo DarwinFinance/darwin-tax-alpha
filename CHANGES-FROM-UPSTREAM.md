@@ -50,24 +50,38 @@ one changes.
 ### `src/permissions/agent-spot-allow.ts`
 Production renders the spot ALLOW for every venue and every historical policy generation from one registry
 (`agent/allow-condition.ts`, `agent/venue-registry.ts`, `agent/relay-rent-payback-policy.ts`,
-`agent/agent-close-policy.ts`, `agent/router-fallback-policy.ts`). This file renders only the generation a
-Tax Alpha position installs (`v9-priority-fee-bound`), with the program sets and instruction discriminators
-written out as named constants. **Darwin's relay wallet is a parameter** (`darwinRelayWallet`); production
-pins it as a constant. The output is byte-identical to production (checked by `scripts/sync.ts` and by the
-test vectors).
+`agent/agent-close-policy.ts`, `agent/router-fallback-policy.ts`). This file renders only the two generations a
+Tax Alpha position can carry: `v10-relay-close-bound` (current; the payback rides only the relay's
+non-idempotent create, and a close to the relay must be of a fresh, relay-created, non-wSOL account) and
+`v9-priority-fee-bound` (superseded, rendered so the verifier can recognise an older position). Program sets
+and instruction discriminators are written out as named constants. **Darwin's relay wallet is a parameter**
+(`darwinRelayWallet`); production pins it as a constant. The output is byte-identical to production for both
+generations (checked by `scripts/sync.ts` and by the test vectors).
 
 ### `src/permissions/strategy-allow.ts`
 Production: `strategy/custody/strategy-allow.ts`.
-- `strategySwapClause(strategyWallet, darwinRelayWallet)` takes the relay as a parameter and calls
-  `spotAllowCondition` above instead of the production registry.
+- `strategySwapClause(strategyWallet, darwinRelayWallet, generation)` takes the relay as a parameter and calls
+  `spotAllowCondition` above instead of the production registry. `s2-relay-close-bound` (current) is agent
+  v10 `&&` `strategyClosesToSelfClause`; `s1-agent-v9-swap` (superseded) is agent v9.
 - `StrategyAllowArgs` gains `darwinRelayWallet`.
 - Production computes the position's USDC token account and passes it to the registry, which ignores it for
-  this generation; that unused computation is dropped.
-- Everything else (the two redemption clauses, validation, names, notes, consensus) is the production code.
+  these generations; that unused computation is dropped.
+- Not published: `strategyAllowGenerationOf`, `upgradedStrategyAllowCondition` and
+  `authoredStrategyAllowsForSetup`, which read an installed policy or Darwin's own setup records to plan and
+  clean up the security update. The verifier renders both generations from the position's parameters
+  instead; the security update carries the redemption alternatives over byte for byte, so the result is
+  the same text.
+- Everything else (generations, the closes-to-self clause, the two redemption clauses, validation, names
+  including the security update's `-s2` name, notes, consensus) is the production code.
 
 ### `src/permissions/position.ts` (new)
-Parameter validation and `expectedPositionPolicies`, which renders both policies for one position. Not in
+Parameter validation; `expectedPositionPolicies`, which renders both policies for one position at the current
+generation (s2); `supersededAllowPolicy`, which renders the s1 ALLOW; and `acceptedAllowPolicyNames`. Not in
 production.
+
+### `src/verify/fetch.ts` (new)
+The verifier's optional `--fetch`: one stamped `list_policies` query to `api.turnkey.com` with the user's own
+API key. Not in production (Darwin's browser code uses Turnkey's SDK).
 
 ### `src/rules/in-kind-contribution.ts`
 Production: `strategy/in-kind-contribution.ts` `reviewInKindContribution`, which interleaves its decisions with
@@ -87,7 +101,8 @@ number-formatting engine that is not published, so `truncTo(x, dp)` with `dp > 0
 
 - `test/upstream/*.test.ts` are production's unit tests, generated (comments stripped, imports rewritten).
 - `test/permissions.test.ts` is adapted from production's `strategy-allow.test.ts` (its comparison against the
-  production registry is replaced by the byte-exact vectors), plus DENY and parameter tests.
+  production registry is replaced by the byte-exact vectors), plus v9/v10 and s1/s2 differences, DENY and
+  parameter tests.
 - `test/rules-extra.test.ts`, `test/verify.test.ts` and `test/cli.test.ts` are new.
 
 ## Not published (by design)

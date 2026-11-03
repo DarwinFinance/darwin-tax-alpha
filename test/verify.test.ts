@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { firstDifference, parsePolicyExport, verifyPosition, type InstalledPolicy } from "../src/verify";
+import { firstDifference, formatResult, parsePolicyExport, SUPERSEDED_MESSAGE, verifyPosition, type InstalledPolicy } from "../src/verify";
+import { supersededAllowPolicy } from "../src/permissions";
 
 const V = (name: string) => JSON.parse(readFileSync(join(import.meta.dir, "vectors", name), "utf8"));
 const params = V("position-a.params.json");
@@ -13,7 +14,42 @@ describe("verifyPosition", () => {
   it("passes the clean example export", () => {
     const r = verifyPosition(params, base());
     expect(r.ok).toBe(true);
+    expect(r.superseded).toBe(false);
+    expect(r.generation).toBe("s2");
     expect(failed(r)).toEqual([]);
+  });
+
+  it("position-c (set up before 2026-11-03, s1 installed): a superseded WARNING, not a mismatch", () => {
+    const r = verifyPosition(V("position-c.params.json"), parsePolicyExport(V("position-c.export.json")));
+    expect(r.ok).toBe(true);
+    expect(r.superseded).toBe(true);
+    expect(r.generation).toBe("s1");
+    expect(failed(r)).toEqual([]);
+    const w = r.checks.find((c) => c.id === "allow_superseded")!;
+    expect(w.status).toBe("warn");
+    expect(w.message).toContain(SUPERSEDED_MESSAGE);
+    expect(formatResult(r)).toContain(`RESULT: WARNING — ${SUPERSEDED_MESSAGE}`);
+  });
+
+  it("a tampered s1 ALLOW is a mismatch, not a superseded warning", () => {
+    const pc = V("position-c.params.json");
+    const s1 = supersededAllowPolicy(pc).condition;
+    const pol = parsePolicyExport(V("position-c.export.json")).map((p) => (p.condition === s1 ? { ...p, condition: s1.replace(" && ", "  && ") } : p));
+    const r = verifyPosition(pc, pol);
+    expect(r.ok).toBe(false);
+    expect(r.superseded).toBe(false);
+    expect(failed(r)).toEqual(["allow_matches"]);
+  });
+
+  it("half-finished security update (s2 and s1 both installed): passes the s2 check but warns that s1 still widens it", () => {
+    const s1: InstalledPolicy = { policyName: "tax-alpha-allow-enr_vectorA01", effect: "EFFECT_ALLOW", consensus: expected.allow.consensus, condition: supersededAllowPolicy(params).condition };
+    const pol = base().map((p) => (p.condition === expected.allow.condition ? { ...p, policyName: "tax-alpha-allow-enr_vectorA01-s2" } : p));
+    const r = verifyPosition(params, [...pol, s1]);
+    expect(r.ok).toBe(true);
+    expect(r.superseded).toBe(true);
+    expect(r.generation).toBe("s2");
+    expect(r.checks.some((c) => c.id === "allow_superseded" && c.status === "warn")).toBe(true);
+    expect(r.checks.some((c) => c.id === "allow_name")).toBe(false); // the -s2 name is accepted
   });
 
   it("fails the tampered example export (an extra SOL redemption destination)", () => {

@@ -2,10 +2,13 @@
 //
 // The Turnkey ALLOW policy one Tax Alpha position installs in the user's own Turnkey sub-organization. Darwin
 // signs for the position with a per-position, NON-ROOT Turnkey user that holds one API key; this policy is
-// the whole of what that user may sign. It is installed once, with the user's passkey, and never edited.
+// the whole of what that user may sign. It is installed with the user's passkey and never edited (a newer
+// generation is installed as a new policy, and the old one deleted, by the in-app "Security update").
 // Three alternatives, OR'd:
 //
-//   SWAP          a dFlow (or Jupiter fallback) swap inside the position's own wallet — agent-spot-allow.ts.
+//   SWAP          a dFlow (or Jupiter fallback) swap inside the position's own wallet — agent-spot-allow.ts —
+//                 and, from generation s2, every SPL Token instruction is a CloseAccount into the position
+//                 wallet itself (`strategyClosesToSelfClause`): no token-account close pays anyone else.
 //   TOKEN REDEEM  SPL `TransferChecked` (opcode 0c) ONLY, from the position wallet, into one of the user's own
 //                 associated token accounts (for the listed redemption mints, both token programs); optionally
 //                 a `CreateIdempotent` (01) of such an account, owned by one of the user's own wallets.
@@ -14,15 +17,20 @@
 //
 // Every alternative carries the compute-budget (priority fee) bound, and both redemptions forbid address
 // lookup tables (an account loaded through a table is invisible to the positional account checks).
-// Not allowed in any alternative: Approve, SetAuthority, any other CloseAccount, a plain token Transfer,
-// raw-payload signing, or a transfer to anyone other than the user's listed wallets (and, inside a swap only,
-// the bounded rent payback to Darwin's relay described in agent-spot-allow.ts).
+//
+// GENERATIONS (an installed ALLOW is immutable, so an older one can still be installed):
+//   s1-agent-v9-swap      SUPERSEDED. The swap alternative is the agent spot ALLOW v9. It let the position key
+//                         close the wallet's wrapped-SOL account to Darwin's relay (paying out the wrapped SOL),
+//                         and pay the relay a rent "payback" beside an idempotent create that put no rent in.
+//   s2-relay-close-bound  CURRENT. The swap alternative is the agent spot ALLOW v10 `&&` every Token close pays
+//                         the position wallet. Installed by every position created from 2026-11-03; an older
+//                         position moves to it through the in-app "Security update".
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { COMPUTE_BUDGET_BOUND } from "./compute-budget-bound";
 import { activityKindIn, assertSafeToken } from "./policy-text";
 import { selfAddressAllowlist } from "./self-address-allowlist";
-import { COMPUTE_BUDGET_PROGRAM, NEVER_A_TABLE_KEY, SYSTEM_PROGRAM, WSOL_MINT, spotAllowCondition } from "./agent-spot-allow";
+import { COMPUTE_BUDGET_PROGRAM, NEVER_A_TABLE_KEY, SYSTEM_PROGRAM, WSOL_MINT, spotAllowCondition, type SpotAllowShape } from "./agent-spot-allow";
 
 export { COMPUTE_BUDGET_BOUND };
 export { DFLOW_ROUTER } from "./agent-spot-allow";
@@ -44,8 +52,9 @@ export type StrategyAllowArgs = {
   redemptionMints: readonly string[];
   /**
    * Darwin's fee-paying relay wallet. It appears in the SWAP alternative only: Darwin pays transaction fees
-   * and the rent of a temporary wSOL account, and a swap may pay that rent back (≤ 1,488,440 lamports), or
-   * close a temporary token account back to the relay. Account-agnostic, but supplied as a parameter.
+   * and the rent of a temporary wSOL account, and a swap may pay back that rent (at most 1,488,440 lamports,
+   * only in the transaction where the relay's create deposits it). Under s2 no token-account close may pay
+   * the relay. The same for every position, but supplied as a parameter (it is not published here).
    */
   darwinRelayWallet: string;
 };
@@ -60,9 +69,32 @@ function validate(args: StrategyAllowArgs): void {
   if (args.redemptionMints.length === 0) throw new Error("strategyAllow: no redemption mints");
 }
 
-/** SWAP — the agent spot ALLOW text, bound to the position wallet (agent-spot-allow.ts). */
-export function strategySwapClause(strategyWallet: string, darwinRelayWallet: string): string {
-  return spotAllowCondition(strategyWallet, darwinRelayWallet);
+/** The strategy ALLOW's generations, oldest first. */
+export type StrategyAllowGeneration = "s1-agent-v9-swap" | "s2-relay-close-bound";
+export const ALL_STRATEGY_ALLOW_GENERATIONS: readonly StrategyAllowGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound"];
+/** What every new position installs, and what the "Security update" moves an older position to. */
+export const CURRENT_STRATEGY_ALLOW_GENERATION: StrategyAllowGeneration = "s2-relay-close-bound";
+
+/** The agent spot generation each strategy generation is pinned to. */
+const AGENT_SHAPE_FOR: Readonly<Record<StrategyAllowGeneration, SpotAllowShape>> = {
+  "s1-agent-v9-swap": "v9-priority-fee-bound",
+  "s2-relay-close-bound": "v10-relay-close-bound",
+};
+
+/**
+ * s2: EVERY SPL Token instruction in the transaction is a three-account instruction whose account [1] (a
+ * CloseAccount's destination; the swap rule already pins the data to '09' and the authority to the wallet) is
+ * the position wallet itself.
+ */
+export function strategyClosesToSelfClause(strategyWallet: string): string {
+  const wallet = assertSafeToken(strategyWallet, "strategy wallet");
+  return `solana.tx.instructions.filter(i, i.program_key == '${TOKEN}').all(j, j.accounts.count() == 3 && j.accounts[1].account_key == '${wallet}')`;
+}
+
+/** SWAP — the agent spot ALLOW text, bound to the position wallet (agent-spot-allow.ts), at `generation`. */
+export function strategySwapClause(strategyWallet: string, darwinRelayWallet: string, generation: StrategyAllowGeneration = CURRENT_STRATEGY_ALLOW_GENERATION): string {
+  const agent = spotAllowCondition(strategyWallet, darwinRelayWallet, AGENT_SHAPE_FOR[generation]);
+  return generation === "s1-agent-v9-swap" ? agent : `${agent} && ${strategyClosesToSelfClause(strategyWallet)}`;
 }
 
 /** TOKEN REDEEM — TransferChecked to the user's own ATAs only. */
@@ -95,9 +127,9 @@ export function strategySolRedeemClause(args: StrategyAllowArgs): string {
 }
 
 /** The whole ALLOW condition: swap OR token redemption OR SOL redemption. */
-export function strategyAllowCondition(args: StrategyAllowArgs): string {
+export function strategyAllowCondition(args: StrategyAllowArgs, generation: StrategyAllowGeneration = CURRENT_STRATEGY_ALLOW_GENERATION): string {
   validate(args);
-  return `(${strategySwapClause(args.strategyWallet, args.darwinRelayWallet)}) || (${strategyTokenRedeemClause(args)}) || (${strategySolRedeemClause(args)})`;
+  return `(${strategySwapClause(args.strategyWallet, args.darwinRelayWallet, generation)}) || (${strategyTokenRedeemClause(args)}) || (${strategySolRedeemClause(args)})`;
 }
 
 export const STRATEGY_ALLOW_NOTES = "Tax Alpha strategy key: dFlow swaps in its own wallet, redemptions only to the user's own wallets. Installed by the user's passkey.";
@@ -105,6 +137,19 @@ export const STRATEGY_ALLOW_NOTES = "Tax Alpha strategy key: dFlow swaps in its 
 export function strategyAllowPolicyName(enrollmentId: string): string {
   if (!enrollmentId) throw new Error("strategyAllowPolicyName requires an enrollment id");
   return `tax-alpha-allow-${assertSafeToken(enrollmentId, "enrollment id")}`;
+}
+
+/**
+ * The name of the ALLOW a security update installs (Turnkey names are unique, and the old ALLOW is still
+ * installed when the new one is created): `tax-alpha-allow-<id>-s2`.
+ */
+export function strategyAllowUpgradePolicyName(setupId: string): string {
+  return `${strategyAllowPolicyName(setupId)}-${CURRENT_STRATEGY_ALLOW_GENERATION.split("-")[0]}`;
+}
+
+/** Every name a position's ALLOW may carry (as set up, or after its security update). */
+export function strategyAllowPolicyNames(setupId: string): string[] {
+  return [strategyAllowPolicyName(setupId), strategyAllowUpgradePolicyName(setupId)];
 }
 
 /** The CREATE_POLICY body for one position. Consensus binds the position's OWN user, never another. */
