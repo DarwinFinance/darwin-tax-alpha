@@ -1,0 +1,12 @@
+{
+  "strategyWallet": "6gvrpMtnZQ4EbsPw2bZLDNFPmNPcBmxdAY742YgmwmEW",
+  "strategyUserId": "bc16c2f3-994c-4173-906a-1a3b245ceb6e",
+  "userWallets": ["4iwjpjF1XTas2r5B9sGZUCTAXAtJWEnhuPe5GHkiVc4L"],
+  "redemptionMints": [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "So11111111111111111111111111111111111111112",
+    "DLQH5ZVWVY2Gjzi583qjNuZhy45US2Thtffzkn5Gvgx5"
+  ],
+  "darwinRelayWallet": "4PgS7gTwP3DsbKo3D6ChcftCZkkejUa67QaW5z63remk",
+  "enrollmentId": "enr_vectorB02"
+}

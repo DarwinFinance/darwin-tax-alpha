@@ -1,0 +1,30 @@
+{
+  "name": "darwin-tax-alpha",
+  "version": "0.1.0",
+  "description": "Darwin Tax Alpha: strategy rules and on-chain permission templates, with a verifier",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "darwin-tax-alpha-verify": "./src/verify/cli.ts"
+  },
+  "exports": {
+    "./rules": "./src/rules/index.ts",
+    "./permissions": "./src/permissions/index.ts",
+    "./verify": "./src/verify/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "verify": "bun src/verify/cli.ts"
+  },
+  "dependencies": {
+    "@solana/spl-token": "0.4.14",
+    "@solana/web3.js": "1.98.4"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.23",
+    "@types/node": "22.15.21",
+    "typescript": "5.9.3"
+  }
+}
