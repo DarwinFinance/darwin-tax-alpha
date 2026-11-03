@@ -52,8 +52,14 @@ The production repository's `.github/workflows/tax-alpha-mirror.yml` runs when a
 
 1. finds the sha the promotion **deployed** (the gate's resolved sha, which must equal the deploy job's checkout
    ref; not `main` HEAD), and checks production out at it;
-2. clones this repository with a write **deploy key** scoped to this repository only
-   (`TAX_ALPHA_MIRROR_DEPLOY_KEY` in the production repository's Actions secrets);
+2. clones this repository over HTTPS with a short-lived token from the **"Darwin Tax Alpha Mirror" GitHub App**.
+   The App is installed on this repository only, with Contents: read and write. Its id and private key are the
+   production repository's Actions secrets `TAX_ALPHA_MIRROR_APP_ID` and `TAX_ALPHA_MIRROR_APP_PRIVATE_KEY`.
+   `actions/create-github-app-token` mints an installation token scoped to this one repository (contents:
+   write), which is masked in logs and revoked when the job ends. git gets it through a one-command credential
+   helper, so it is never in a URL or in `.git/config`. If either secret is missing, the run fails at its first
+   step and says so. (Deploy keys are disabled by the enterprise policy.) Commits are authored by the App's bot
+   identity;
 3. runs `bun scripts/sync.ts --upstream <that checkout>` (regenerate, **without** `--accept-pins`), then
    `--check`, `bun test`, `bunx tsc --noEmit`, `bun scripts/scan.ts --upstream <checkout>` and gitleaks;
 4. pushes one commit to `main` ("Sync from DarwinFinance/darwin@<sha>") only if a published file changed. A new
