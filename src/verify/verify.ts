@@ -3,8 +3,8 @@
  * should have installed: its ALLOW and its DENY, byte for byte (effect, consensus, condition), and no other
  * policy granting anything to the position's signer.
  *
- * The ALLOW is checked against the CURRENT generation (s3). An ALLOW that is byte for byte a SUPERSEDED
- * generation (s1 or s2) is a warning, not a mismatch: it is exactly what Darwin installed earlier, but it lacks
+ * The ALLOW is checked against the CURRENT generation (s5). An ALLOW that is byte for byte a SUPERSEDED
+ * generation (s1 to s4) is a warning, not a mismatch: it is exactly what Darwin installed earlier, but it lacks
  * bounds the current generation has, and the user should run the in-app "Security update".
  */
 import {
@@ -18,26 +18,46 @@ export interface Check { id: string; status: CheckStatus; message: string; detai
 export interface VerifyResult {
   /** No check failed. (A superseded ALLOW is a warning, so `ok` can be true with `superseded` true.) */
   ok: boolean;
-  /** A superseded (s1 or s2) ALLOW for this position is installed, alone or beside the current one. */
+  /** A superseded (s1 to s4) ALLOW for this position is installed, alone or beside the current one. */
   superseded: boolean;
   /** Which superseded generations are installed, oldest first. */
   supersededGenerations: ShortGeneration[];
-  /** The newest ALLOW generation found: "s3" (current), "s2" / "s1" (superseded only), or null (none matched). */
-  generation: "s3" | ShortGeneration | null;
+  /** The newest ALLOW generation found: "s5" (current), "s4" … "s1" (superseded only), or null (none matched). */
+  generation: "s5" | ShortGeneration | null;
   checks: Check[];
 }
 
-type ShortGeneration = "s1" | "s2";
-const SHORT: Record<SupersededGeneration, ShortGeneration> = { "s1-agent-v9-swap": "s1", "s2-relay-close-bound": "s2" };
+type ShortGeneration = "s1" | "s2" | "s3" | "s4";
+const SHORT: Record<SupersededGeneration, ShortGeneration> = {
+  "s1-agent-v9-swap": "s1", "s2-relay-close-bound": "s2", "s3-dflow-accounts-bound": "s3", "s4-dflow-names-narrowed": "s4",
+};
+
+/** What each superseded generation lacks, cumulatively (an older generation lacks everything a newer one does). */
+const LACKS = {
+  s4: "allows dFlow swaps whose output can be redirected",
+  s3: "and three dFlow instructions that can send the position's SOL away or pass on its signature",
+  s2: "and is missing the dFlow wrap_sol/ATA-owner bounds",
+  s1: "and the relay-close bound",
+} as const;
+const UPDATE = "run the Security update in Darwin";
 
 /** The warning for each superseded generation, naming what it is missing. */
 export const SUPERSEDED_MESSAGES: Readonly<Record<ShortGeneration, string>> = {
-  s1: "s1: superseded, missing the relay-close bound and the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin",
-  s2: "s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin",
+  s4: `s4: superseded, ${LACKS.s4}; ${UPDATE}`,
+  s3: `s3: superseded, ${LACKS.s4} ${LACKS.s3}; ${UPDATE}`,
+  s2: `s2: superseded, ${LACKS.s4} ${LACKS.s3}, ${LACKS.s2}; ${UPDATE}`,
+  s1: `s1: superseded, ${LACKS.s4} ${LACKS.s3}, ${LACKS.s2} ${LACKS.s1}; ${UPDATE}`,
 };
+const DFLOW_OUTPUT = "it admits dFlow swaps, and a dFlow swap's output account sits at a route-dependent position no policy text can name, so a transaction the position's key signs could pay the swap's whole output into another address's existing token account";
+const DFLOW_NAMES = "it admits dFlow open_order (which can send a caller-chosen amount of the position's SOL to a caller-chosen receiver) and create_referral_token_account_idempotent / init_market_ledger_idempotent (which pass the position wallet's signature to a caller-chosen program)";
+const DFLOW_ACCOUNTS = "it does not bind who owns a token account created inside a dFlow swap (the position's wallet could pay rent for an account another address owns) or where a dFlow wrap_sol deposits (it could wrap the position's SOL into another address's existing wSOL account)";
+const RELAY_CLOSE = "it let the position's key close the position's wrapped-SOL account to Darwin's relay wallet, and pay the relay a rent payback beside a create that put no rent in";
+const S5 = "s5 swaps only through Jupiter's shared_accounts_route with the output pinned to the position's own token account.";
 const SUPERSEDED_DETAIL: Readonly<Record<ShortGeneration, string>> = {
-  s1: "It matches the superseded generation s1 byte for byte. s1 let the position's key close the position's wrapped-SOL account to Darwin's relay wallet, and (like s2) did not bind who owns a token account created inside a dFlow swap or where a dFlow wrap_sol deposits; s3 binds all three.",
-  s2: "It matches the superseded generation s2 byte for byte. s2 did not bind who owns a token account created inside a dFlow swap (the position's wallet could pay rent for an account another address owns) or where a dFlow wrap_sol deposits (it could wrap the position's SOL into another address's existing wSOL account); s3 binds both to the position's own accounts.",
+  s4: `It matches the superseded generation s4 byte for byte. ${DFLOW_OUTPUT}. ${S5}`,
+  s3: `It matches the superseded generation s3 byte for byte. ${DFLOW_OUTPUT}; and ${DFLOW_NAMES}. ${S5}`,
+  s2: `It matches the superseded generation s2 byte for byte. ${DFLOW_OUTPUT}; ${DFLOW_NAMES}; and ${DFLOW_ACCOUNTS}. ${S5}`,
+  s1: `It matches the superseded generation s1 byte for byte. ${DFLOW_OUTPUT}; ${DFLOW_NAMES}; ${DFLOW_ACCOUNTS}; and ${RELAY_CLOSE}. ${S5}`,
 };
 
 /** Where two strings first differ, with a little context from each — for a readable mismatch report. */
@@ -133,7 +153,7 @@ export function verifyPosition(params: PositionParams, installed: InstalledPolic
   }
   const ok = checks.every((c) => c.status !== "fail");
   const supersededGenerations = supersededInstalled.map((x) => x.g);
-  const generation = currentInstalled.length > 0 ? "s3" : supersededGenerations.length > 0 ? supersededGenerations[supersededGenerations.length - 1]! : null;
+  const generation = currentInstalled.length > 0 ? "s5" : supersededGenerations.length > 0 ? supersededGenerations[supersededGenerations.length - 1]! : null;
   return { ok, superseded: supersededGenerations.length > 0, supersededGenerations, generation, checks };
 }
 

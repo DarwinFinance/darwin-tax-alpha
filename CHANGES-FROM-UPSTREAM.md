@@ -51,38 +51,51 @@ one changes.
 Production renders the spot ALLOW for every venue and every historical policy generation from one registry
 (`agent/allow-condition.ts`, `agent/venue-registry.ts`, `agent/relay-rent-payback-policy.ts`,
 `agent/agent-close-policy.ts`, `agent/router-fallback-policy.ts`, `agent/dflow-account-bounds.ts`). This file
-renders only the three generations a Tax Alpha position can carry: `v11-dflow-accounts-bound` (current; v10 plus,
-inside the dFlow branch, every ATA instruction's owner is the wallet and its payer the wallet or the relay, and
-every dFlow `wrap_sol` deposits into the wallet's own wSOL account), `v10-relay-close-bound` (superseded; the
-payback rides only the relay's non-idempotent create, and a close to the relay must be of a fresh, relay-created,
-non-wSOL account) and `v9-priority-fee-bound` (superseded). The two older ones are rendered so the verifier can
-recognise an older position. Program sets and instruction discriminators are written out as named constants.
-**Darwin's relay wallet is a parameter** (`darwinRelayWallet`, also passed to `dflowAtaCreatesOwnedClause`);
-production pins it as a constant. The output is byte-identical to production for all three generations (checked
-by `scripts/sync.ts` and by the test vectors).
+renders only the five generations a Tax Alpha position can carry:
+- `v13-jupiter-only` (current): no dFlow branch. `SIGN && signer-bound && (Jupiter-only branch) && compute-budget
+  bound`, where the branch (`jupiterOnlyBranchClauses`, upstream `jupiterOnlySpotClauses`) admits only
+  `shared_accounts_route` with [2] the wallet, [9] the Jupiter program (none), the wallet exactly once in the
+  instruction, and [6] an in-transaction ATA create owned by the wallet; at most two ATA creates, owned by the
+  wallet and paid by the wallet or the relay; System only a Transfer from the wallet to its own wSOL account; SPL
+  Token only SyncNative / CloseAccount of that account, closes into the wallet; no lookup tables.
+- `v12-dflow-names-narrowed` (superseded): v11 with the dFlow discriminator lists naming only swap, swap2,
+  wrap_sol and unwrap_sol (`DFLOW_NAMES_DROPPED_AT_V12`, `dflowInstructionsFor`).
+- `v11-dflow-accounts-bound` (superseded): v10 plus, inside the dFlow branch, every ATA instruction's owner is the
+  wallet and its payer the wallet or the relay, and every dFlow `wrap_sol` deposits into the wallet's own wSOL account.
+- `v10-relay-close-bound` (superseded): the payback rides only the relay's non-idempotent create, and a close to
+  the relay must be of a fresh, relay-created, non-wSOL account.
+- `v9-priority-fee-bound` (superseded).
+
+The four older ones are rendered so the verifier can recognise an older position. Program sets and instruction
+discriminators are written out as named constants. **Darwin's relay wallet is a parameter** (`darwinRelayWallet`,
+also passed to `dflowAtaCreatesOwnedClause` and `jupiterOnlyBranchClauses`); production pins it as a constant. The
+output is byte-identical to production for all five generations (checked by `scripts/sync.ts` and by the test
+vectors).
 
 ### `src/permissions/strategy-allow.ts`
 Production: `strategy/custody/strategy-allow.ts`.
 - `strategySwapClause(strategyWallet, darwinRelayWallet, generation)` takes the relay as a parameter and calls
-  `spotAllowCondition` above instead of the production registry. `s3-dflow-accounts-bound` (current) is agent
-  v11 `&&` `strategyClosesToSelfClause`; `s2-relay-close-bound` (superseded) is agent v10 `&&`
-  `strategyClosesToSelfClause`; `s1-agent-v9-swap` (superseded) is agent v9.
+  `spotAllowCondition` above instead of the production registry. `s5-jupiter-only` (current) is agent v13 alone
+  (`strategyGenerationIsJupiterOnly`; no `strategyClosesToSelfClause`, since v13's own Token bound is narrower);
+  `s4-dflow-names-narrowed`, `s3-dflow-accounts-bound` and `s2-relay-close-bound` (superseded) are agent v12, v11
+  and v10 `&&` `strategyClosesToSelfClause`; `s1-agent-v9-swap` (superseded) is agent v9.
 - `StrategyAllowArgs` gains `darwinRelayWallet`.
 - Production computes the position's USDC token account and passes it to the registry, which ignores it for
   these generations; that unused computation is dropped.
 - Not published: `strategyAllowGenerationOf`, `upgradedStrategyAllowCondition`,
   `strategyAllowConditionAtGeneration`, `intermediateStrategyAllowGenerations` and
   `authoredStrategyAllowsForSetup`, which read an installed policy or Darwin's own setup records to plan and
-  clean up the security update (including re-rendering every later generation's ALLOW, `-s2` and `-s3`, for a
+  clean up the security update (including re-rendering every later generation's ALLOW, `-s2` to `-s5`, for a
   position whose update stopped half-way). The verifier renders every generation from the position's
   parameters instead; the security update carries the redemption alternatives over byte for byte, so the
   result is the same text.
 - Everything else (generations, the closes-to-self clause, the two redemption clauses, validation, names
-  including the security updates' `-s2` and `-s3` names, notes, consensus) is the production code.
+  including the security updates' `-s2` to `-s5` names, notes, consensus) is the production code. The notes
+  string still says "dFlow swaps"; it is production's text, unchanged, and is not part of what Turnkey enforces.
 
 ### `src/permissions/position.ts` (new)
 Parameter validation; `expectedPositionPolicies`, which renders both policies for one position at the current
-generation (s3); `supersededAllowPolicy(params, generation)`, which renders the s1 or s2 ALLOW;
+generation (s5); `supersededAllowPolicy(params, generation)`, which renders the s1, s2, s3 or s4 ALLOW;
 `SUPERSEDED_GENERATIONS`; and `acceptedAllowPolicyNames`. Not in production.
 
 ### `src/verify/fetch.ts` (new)
@@ -107,7 +120,7 @@ number-formatting engine that is not published, so `truncTo(x, dp)` with `dp > 0
 
 - `test/upstream/*.test.ts` are production's unit tests, generated (comments stripped, imports rewritten).
 - `test/permissions.test.ts` is adapted from production's `strategy-allow.test.ts` (its comparison against the
-  production registry is replaced by the byte-exact vectors), plus v9/v10/v11 and s1/s2/s3 differences, DENY
+  production registry is replaced by the byte-exact vectors), plus v9 to v13 and s1 to s5 differences, DENY
   and parameter tests.
 - `test/rules-extra.test.ts`, `test/verify.test.ts` and `test/cli.test.ts` are new.
 

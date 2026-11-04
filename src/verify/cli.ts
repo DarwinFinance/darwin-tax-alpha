@@ -15,7 +15,7 @@
  * environment (TURNKEY_READONLY_API_PRIVATE_KEY, optionally TURNKEY_READONLY_API_PUBLIC_KEY). The key is
  * never printed or saved. See src/verify/fetch.ts.
  *
- * Exit codes: 0 pass, 1 mismatch, 2 bad input, 3 superseded (an s1 or s2 ALLOW is installed; nothing else differs).
+ * Exit codes: 0 pass, 1 mismatch, 2 bad input, 3 superseded (an s1, s2, s3 or s4 ALLOW is installed; nothing else differs).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { expectedPositionPolicies, validatePositionParams } from "../permissions/position";

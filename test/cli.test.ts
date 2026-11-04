@@ -32,14 +32,22 @@ describe("darwin-tax-alpha-verify", () => {
   it("exits 3 with RESULT: WARNING on a superseded (s1) export", async () => {
     const r = await run(["--params", "position-c.params.json", "--export", "position-c.export.json"]);
     expect(r.code).toBe(3);
-    expect(r.out).toContain("RESULT: WARNING — s1: superseded, missing the relay-close bound and the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
+    expect(r.out).toContain("RESULT: WARNING — s1: superseded, allows dFlow swaps whose output can be redirected and three dFlow instructions that can send the position's SOL away or pass on its signature, and is missing the dFlow wrap_sol/ATA-owner bounds and the relay-close bound; run the Security update in Darwin");
   });
 
   it("exits 3 with RESULT: WARNING on a superseded (s2) export", async () => {
     const r = await run(["--params", "position-d.params.json", "--export", "position-d.export.json"]);
     expect(r.code).toBe(3);
-    expect(r.out).toContain("WARN  ALLOW policy 'tax-alpha-allow-enr_vectorD01' — s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
-    expect(r.out).toContain("RESULT: WARNING — s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
+    const s2 = "s2: superseded, allows dFlow swaps whose output can be redirected and three dFlow instructions that can send the position's SOL away or pass on its signature, and is missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin";
+    expect(r.out).toContain(`WARN  ALLOW policy 'tax-alpha-allow-enr_vectorD01' — ${s2}`);
+    expect(r.out).toContain(`RESULT: WARNING — ${s2}`);
+  });
+
+  it("exits 3 with RESULT: WARNING on a superseded (s4) export", async () => {
+    const r = await run(["--params", "position-e.params.json", "--export", "position-e.export.json"]);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("WARN  ALLOW policy 'tax-alpha-allow-enr_vectorE01' — s4: superseded, allows dFlow swaps whose output can be redirected; run the Security update in Darwin");
+    expect(r.out).toContain("RESULT: WARNING — s4: superseded, allows dFlow swaps whose output can be redirected; run the Security update in Darwin");
   });
 
   it("--json emits a machine-readable result", async () => {

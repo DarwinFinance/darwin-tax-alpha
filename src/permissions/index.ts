@@ -2,7 +2,7 @@ export * from "./position";
 export {
   buildStrategyAllowPolicyBody, strategyAllowCondition, strategyAllowPolicyName, strategyAllowUpgradePolicyName,
   strategyAllowPolicyNames, strategyAllowGenerationPolicyName, strategySwapClause, strategyClosesToSelfClause, strategyTokenRedeemClause,
-  strategySolRedeemClause, STRATEGY_ALLOW_NOTES, ALL_STRATEGY_ALLOW_GENERATIONS, CURRENT_STRATEGY_ALLOW_GENERATION,
+  strategySolRedeemClause, strategyGenerationIsJupiterOnly, STRATEGY_ALLOW_NOTES, ALL_STRATEGY_ALLOW_GENERATIONS, CURRENT_STRATEGY_ALLOW_GENERATION,
   type StrategyAllowArgs, type StrategyAllowGeneration,
 } from "./strategy-allow";
 export { buildStrategyDenyPolicyBody, strategyObjectNames, strategyUserConsensus, AGENT_DENY_CONDITION } from "./strategy-deny";

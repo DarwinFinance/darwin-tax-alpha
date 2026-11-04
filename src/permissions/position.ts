@@ -63,8 +63,8 @@ export function validatePositionParams(p: unknown): asserts p is PositionParams 
 
 /**
  * The exact ALLOW and DENY a position with these parameters installs today (the CURRENT strategy generation,
- * `s3-dflow-accounts-bound`). A position whose ALLOW was installed by its security update carries the same text
- * under the name `tax-alpha-allow-<id>-s3` (see `acceptedAllowPolicyNames`).
+ * `s5-jupiter-only`). A position whose ALLOW was installed by its security update carries the same text
+ * under the name `tax-alpha-allow-<id>-s5` (see `acceptedAllowPolicyNames`).
  */
 export function expectedPositionPolicies(params: PositionParams): ExpectedPositionPolicies {
   validatePositionParams(params);
@@ -82,16 +82,19 @@ export function expectedPositionPolicies(params: PositionParams): ExpectedPositi
 export const CURRENT_GENERATION: StrategyAllowGeneration = CURRENT_STRATEGY_ALLOW_GENERATION;
 
 /** The older generations the verifier recognises as SUPERSEDED (not a mismatch), oldest first. */
-export type SupersededGeneration = Exclude<StrategyAllowGeneration, "s3-dflow-accounts-bound">;
-export const SUPERSEDED_GENERATIONS: readonly SupersededGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound"];
+export type SupersededGeneration = Exclude<StrategyAllowGeneration, "s5-jupiter-only">;
+export const SUPERSEDED_GENERATIONS: readonly SupersededGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound", "s3-dflow-accounts-bound", "s4-dflow-names-narrowed"];
 
 /**
  * The ALLOW of an older, SUPERSEDED generation, which a position keeps until the user runs the in-app
- * "Security update":
- *   s1-agent-v9-swap      positions created before 2026-11-03 (lacks the relay-close bound and the dFlow
- *                         account bounds);
- *   s2-relay-close-bound  positions created, or updated, on 2026-11-03 before the s3 release that night (lacks
- *                         the dFlow `wrap_sol` / ATA-owner bounds).
+ * "Security update". Every one of them admits dFlow swaps, whose output account no policy text can pin:
+ *   s1-agent-v9-swap         positions created before 2026-11-03 (also lacks the relay-close bound and the dFlow
+ *                            account bounds, and admits the three dFlow instructions s4 drops);
+ *   s2-relay-close-bound     positions created, or updated, on 2026-11-03 before the s3 release that night (also
+ *                            lacks the dFlow `wrap_sol` / ATA-owner bounds, and admits the three dFlow instructions);
+ *   s3-dflow-accounts-bound  positions created, or updated, from the night of 2026-11-03 until s4 (also admits dFlow
+ *                            `open_order`, `create_referral_token_account_idempotent`, `init_market_ledger_idempotent`);
+ *   s4-dflow-names-narrowed  positions created, or updated, on 2026-11-04 before the s5 release that afternoon.
  * Same redemption alternatives and consensus; only the swap alternative differs. The verifier recognises these
  * so it can say "superseded" instead of "mismatch". The name is the set-up name (an s2 ALLOW installed by an
  * s1 → s2 update is named `…-s2`; names are informational).

@@ -11,7 +11,7 @@ import {
   strategyAllowCondition, strategyAllowPolicyName, strategyAllowPolicyNames, strategyAllowUpgradePolicyName,
   strategyClosesToSelfClause, strategySolRedeemClause, strategySwapClause, strategyTokenRedeemClause,
   supersededAllowPolicy, validatePositionParams, dflowAtaCreatesOwnedClause, dflowWrapSolTargetClause,
-  strategyAllowGenerationPolicyName,
+  strategyAllowGenerationPolicyName, jupiterOnlyBranchClauses, dflowInstructionsFor, DFLOW_NAMES_DROPPED_AT_V12,
 } from "../src/permissions";
 
 const V = (name: string) => JSON.parse(readFileSync(join(import.meta.dir, "vectors", name), "utf8"));
@@ -24,7 +24,7 @@ const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const args = { strategyWallet: WALLET, userWallets: [USER], redemptionMints: [USDC], darwinRelayWallet: RELAY };
 
 describe("test vectors (rendered by the upstream builder)", () => {
-  for (const v of ["position-a", "position-b", "position-c", "position-d"]) {
+  for (const v of ["position-a", "position-b", "position-c", "position-d", "position-e"]) {
     it(`${v}: this repository renders the ALLOW and DENY byte for byte`, () => {
       expect(expectedPositionPolicies(V(`${v}.params.json`))).toEqual(V(`${v}.expected.json`));
     });
@@ -46,19 +46,49 @@ describe("strategy ALLOW", () => {
     expect(strategyAllowCondition(args)).toBe(`(${strategySwapClause(WALLET, RELAY)}) || (${strategyTokenRedeemClause(args)}) || (${strategySolRedeemClause(args)})`);
   });
 
-  it("swap: Turnkey must be signing WITH the position wallet; the priority-fee bound then the closes-to-self bound end it", () => {
+  it("swap (s5): Turnkey must be signing WITH the position wallet; the Jupiter-only branch, then the priority-fee bound", () => {
     const c = strategySwapClause(WALLET, RELAY);
-    expect(c.startsWith(`activity.kind == 'SIGN_TRANSACTION' && wallet_account.address == '${WALLET}' && (`)).toBe(true);
-    expect(c.endsWith(` && ${COMPUTE_BUDGET_BOUND} && ${strategyClosesToSelfClause(WALLET)}`)).toBe(true);
-    // The only transfer a swap may carry is the bounded rent payback to the relay.
-    expect(c).toContain(`solana.tx.transfers.all(t, t.from == '${WALLET}' && t.to == '${RELAY}' && t.amount < 1488441)`);
+    expect(c).toBe(`activity.kind == 'SIGN_TRANSACTION' && wallet_account.address == '${WALLET}' && (${jupiterOnlyBranchClauses(WALLET, RELAY).join(" && ")}) && ${COMPUTE_BUDGET_BOUND}`);
+    // No dFlow, no transfer or close to the relay, no closes-to-self clause (v13's own Token bound is narrower).
+    expect(c).not.toContain("DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH");
+    expect(c).not.toContain("solana.tx.transfers");
+    expect(c).not.toContain(strategyClosesToSelfClause(WALLET));
+    // The relay appears once: as an allowed payer of an ATA create owned by the wallet.
+    expect(c.split(RELAY).length - 1).toBe(1);
+    expect(c).toContain(`j.accounts[2].account_key == '${WALLET}' && j.accounts[0].account_key in ['${WALLET}', '${RELAY}']`);
   });
 
-  it("s3 (CURRENT) is the agent v11 spot text && every Token close pays the position wallet itself", () => {
-    expect(CURRENT_STRATEGY_ALLOW_GENERATION).toBe("s3-dflow-accounts-bound");
-    expect(strategySwapClause(WALLET, RELAY)).toBe(`${spotAllowCondition(WALLET, RELAY, "v11-dflow-accounts-bound")} && ${strategyClosesToSelfClause(WALLET)}`);
+  it("s5 (CURRENT) is the agent v13 spot text alone", () => {
+    expect(CURRENT_STRATEGY_ALLOW_GENERATION).toBe("s5-jupiter-only");
+    expect(strategySwapClause(WALLET, RELAY)).toBe(spotAllowCondition(WALLET, RELAY, "v13-jupiter-only"));
+    expect(strategySwapClause(WALLET, RELAY, "s4-dflow-names-narrowed")).toBe(`${spotAllowCondition(WALLET, RELAY, "v12-dflow-names-narrowed")} && ${strategyClosesToSelfClause(WALLET)}`);
+    expect(strategySwapClause(WALLET, RELAY, "s3-dflow-accounts-bound")).toBe(`${spotAllowCondition(WALLET, RELAY, "v11-dflow-accounts-bound")} && ${strategyClosesToSelfClause(WALLET)}`);
     expect(strategySwapClause(WALLET, RELAY, "s2-relay-close-bound")).toBe(`${spotAllowCondition(WALLET, RELAY, "v10-relay-close-bound")} && ${strategyClosesToSelfClause(WALLET)}`);
     expect(strategyClosesToSelfClause(WALLET)).toBe(`solana.tx.instructions.filter(i, i.program_key == 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').all(j, j.accounts.count() == 3 && j.accounts[1].account_key == '${WALLET}')`);
+  });
+
+  it("v13: the output [6] is an in-transaction ATA create the wallet owns; the wallet appears once; [9] is none; wSOL only", () => {
+    const c = jupiterOnlyBranchClauses(WALLET, RELAY).join(" && ");
+    const wsol = agentWsolAta(WALLET);
+    expect(c).toContain(`j.accounts[2].account_key == '${WALLET}' && j.accounts[9].account_key == 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4' && j.accounts.filter(a, a.account_key == '${WALLET}').count() == 1`);
+    expect(c).toContain(`c.accounts[1].account_key == j.accounts[6].account_key && c.accounts[2].account_key == '${WALLET}'`);
+    expect(c).toContain("solana.tx.instructions.filter(i, i.program_key == 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL').count() <= 2");
+    expect(c).toContain(`j.instruction_data_hex[0..8] == '02000000' && j.accounts.count() == 2 && j.accounts[0].account_key == '${WALLET}' && j.accounts[1].account_key == '${wsol}'`);
+    expect(c).toContain(`j.instruction_data_hex in ['09', '11'] && j.accounts.count() > 0 && j.accounts[0].account_key == '${wsol}'`);
+    expect(c).toContain(`j.accounts.count() == 3 && j.accounts[1].account_key == '${WALLET}' && j.accounts[2].account_key == '${WALLET}'`);
+    expect(c.endsWith("solana.tx.address_table_lookups.all(l, l.address_table_key in ['MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'])")).toBe(true);
+  });
+
+  it("v12 is v11 with the dFlow discriminator lists narrowed to swap, swap2, wrap_sol, unwrap_sol", () => {
+    expect(dflowInstructionsFor("v12-dflow-names-narrowed").map(([n]) => n)).toEqual(["swap", "swap2", "wrap_sol", "unwrap_sol"]);
+    const v12 = spotAllowCondition(WALLET, RELAY, "v12-dflow-names-narrowed");
+    const v11 = spotAllowCondition(WALLET, RELAY, "v11-dflow-accounts-bound");
+    const full = dflowInstructionsFor("v11-dflow-accounts-bound");
+    const dropped = full.filter(([n]) => DFLOW_NAMES_DROPPED_AT_V12.includes(n)).map(([, h]) => h);
+    expect(dropped).toHaveLength(3);
+    for (const h of dropped) { expect(v11).toContain(`'${h}'`); expect(v12).not.toContain(`'${h}'`); }
+    const list = (xs: readonly (readonly [string, string])[]) => `[${xs.map(([, h]) => `'${h}'`).join(", ")}]`;
+    expect(v12).toBe(v11.split(list(full)).join(list(dflowInstructionsFor("v12-dflow-names-narrowed"))));
   });
 
   it("v11 is v10 plus, inside the dFlow branch only, the ATA-owner and wrap_sol-target bounds", () => {
@@ -91,25 +121,27 @@ describe("strategy ALLOW", () => {
     expect(spotAllowCondition(WALLET, RELAY, "v9-priority-fee-bound")).not.toContain(`!= '${agentWsolAta(WALLET)}'`);
   });
 
-  it("s1 and s2 (superseded) differ from s3 only in the swap alternative; redemptions and consensus are identical", () => {
+  it("s1 to s4 (superseded) differ from s5 only in the swap alternative; redemptions and consensus are identical", () => {
     expect(strategySwapClause(WALLET, RELAY, "s1-agent-v9-swap")).toBe(spotAllowCondition(WALLET, RELAY, "v9-priority-fee-bound"));
     const p = V("position-a.params.json");
-    const s3 = expectedPositionPolicies(p).allow;
-    type G = "s1-agent-v9-swap" | "s2-relay-close-bound" | "s3-dflow-accounts-bound";
+    const s5 = expectedPositionPolicies(p).allow;
+    type G = "s1-agent-v9-swap" | "s2-relay-close-bound" | "s3-dflow-accounts-bound" | "s4-dflow-names-narrowed" | "s5-jupiter-only";
     const tail = (c: string, g: G) => c.slice(`(${strategySwapClause(p.strategyWallet, p.darwinRelayWallet, g)})`.length);
-    for (const g of ["s1-agent-v9-swap", "s2-relay-close-bound"] as const) {
+    const olds = (["s1-agent-v9-swap", "s2-relay-close-bound", "s3-dflow-accounts-bound", "s4-dflow-names-narrowed"] as const).map((g) => {
       const old = supersededAllowPolicy(p, g);
-      expect(old.condition).not.toBe(s3.condition);
-      expect(tail(old.condition, g)).toBe(tail(s3.condition, "s3-dflow-accounts-bound"));
-      expect(old.consensus).toBe(s3.consensus);
-    }
-    expect(supersededAllowPolicy(p, "s1-agent-v9-swap").condition).not.toBe(supersededAllowPolicy(p, "s2-relay-close-bound").condition);
+      expect(old.condition).not.toBe(s5.condition);
+      expect(tail(old.condition, g)).toBe(tail(s5.condition, "s5-jupiter-only"));
+      expect(old.consensus).toBe(s5.consensus);
+      return old.condition;
+    });
+    expect(new Set(olds).size).toBe(4);
   });
 
   it("names: a position's ALLOW, and the ones its security updates install", () => {
-    expect(strategyAllowPolicyNames("setup1")).toEqual(["tax-alpha-allow-setup1", "tax-alpha-allow-setup1-s2", "tax-alpha-allow-setup1-s3"]);
-    expect(strategyAllowUpgradePolicyName("setup1")).toBe("tax-alpha-allow-setup1-s3");
+    expect(strategyAllowPolicyNames("setup1")).toEqual(["tax-alpha-allow-setup1", "tax-alpha-allow-setup1-s2", "tax-alpha-allow-setup1-s3", "tax-alpha-allow-setup1-s4", "tax-alpha-allow-setup1-s5"]);
+    expect(strategyAllowUpgradePolicyName("setup1")).toBe("tax-alpha-allow-setup1-s5");
     expect(strategyAllowGenerationPolicyName("setup1", "s2-relay-close-bound")).toBe("tax-alpha-allow-setup1-s2");
+    expect(strategyAllowGenerationPolicyName("setup1", "s4-dflow-names-narrowed")).toBe("tax-alpha-allow-setup1-s4");
   });
 
   it("token redemption admits TransferChecked only, to the user's own ATAs, owned by the position wallet", () => {

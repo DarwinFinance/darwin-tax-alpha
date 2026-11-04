@@ -15,8 +15,34 @@ describe("verifyPosition", () => {
     const r = verifyPosition(params, base());
     expect(r.ok).toBe(true);
     expect(r.superseded).toBe(false);
-    expect(r.generation).toBe("s3");
+    expect(r.generation).toBe("s5");
     expect(failed(r)).toEqual([]);
+  });
+
+  it("position-e (set up on 2026-11-04 before s5, s4 installed): a superseded WARNING naming the dFlow output", () => {
+    const r = verifyPosition(V("position-e.params.json"), parsePolicyExport(V("position-e.export.json")));
+    expect(r.ok).toBe(true);
+    expect(r.superseded).toBe(true);
+    expect(r.generation).toBe("s4");
+    expect(r.supersededGenerations).toEqual(["s4"]);
+    expect(failed(r)).toEqual([]);
+    const w = r.checks.filter((c) => c.id === "allow_superseded");
+    expect(w).toHaveLength(1);
+    expect(w[0]!.message).toContain("s4: superseded, allows dFlow swaps whose output can be redirected; run the Security update in Darwin");
+    expect(formatResult(r)).toContain(`RESULT: WARNING — ${SUPERSEDED_MESSAGES.s4}`);
+  });
+
+  it("an s3 ALLOW is superseded; each older generation's warning names everything the newer ones lack", () => {
+    const pe = V("position-e.params.json");
+    const s3 = supersededAllowPolicy(pe, "s3-dflow-accounts-bound");
+    const pol = parsePolicyExport(V("position-e.export.json")).map((p) => (p.condition === supersededAllowPolicy(pe, "s4-dflow-names-narrowed").condition ? { ...p, condition: s3.condition } : p));
+    const r = verifyPosition(pe, pol);
+    expect(r.ok).toBe(true);
+    expect(r.supersededGenerations).toEqual(["s3"]);
+    expect(r.generation).toBe("s3");
+    expect(SUPERSEDED_MESSAGES.s3).toBe("s3: superseded, allows dFlow swaps whose output can be redirected and three dFlow instructions that can send the position's SOL away or pass on its signature; run the Security update in Darwin");
+    expect(SUPERSEDED_MESSAGES.s2).toBe("s2: superseded, allows dFlow swaps whose output can be redirected and three dFlow instructions that can send the position's SOL away or pass on its signature, and is missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
+    expect(SUPERSEDED_MESSAGES.s1).toBe("s1: superseded, allows dFlow swaps whose output can be redirected and three dFlow instructions that can send the position's SOL away or pass on its signature, and is missing the dFlow wrap_sol/ATA-owner bounds and the relay-close bound; run the Security update in Darwin");
   });
 
   it("position-c (set up before 2026-11-03, s1 installed): a superseded WARNING, not a mismatch", () => {
@@ -32,7 +58,7 @@ describe("verifyPosition", () => {
     expect(formatResult(r)).toContain(`RESULT: WARNING — ${SUPERSEDED_MESSAGES.s1}`);
   });
 
-  it("position-d (set up on 2026-11-03 before s3, s2 installed): a superseded WARNING naming the dFlow bounds", () => {
+  it("position-d (set up on 2026-11-03 before s3, s2 installed): a superseded WARNING", () => {
     const r = verifyPosition(V("position-d.params.json"), parsePolicyExport(V("position-d.export.json")));
     expect(r.ok).toBe(true);
     expect(r.superseded).toBe(true);
@@ -41,11 +67,11 @@ describe("verifyPosition", () => {
     expect(failed(r)).toEqual([]);
     const w = r.checks.filter((c) => c.id === "allow_superseded");
     expect(w).toHaveLength(1);
-    expect(w[0]!.message).toContain("s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
+    expect(w[0]!.message).toContain(SUPERSEDED_MESSAGES.s2);
     expect(formatResult(r)).toContain(`RESULT: WARNING — ${SUPERSEDED_MESSAGES.s2}`);
   });
 
-  it("s1 AND s2 both installed, no s3 (an s1 → s2 update left half-way): one warning per generation", () => {
+  it("s1 AND s2 both installed, no s5 (an s1 → s2 update left half-way): one warning per generation", () => {
     const pd = V("position-d.params.json");
     const s1: InstalledPolicy = { policyName: "tax-alpha-allow-enr_vectorD01", effect: "EFFECT_ALLOW", consensus: supersededAllowPolicy(pd, "s1-agent-v9-swap").consensus, condition: supersededAllowPolicy(pd, "s1-agent-v9-swap").condition };
     const pol = parsePolicyExport(V("position-d.export.json")).map((p) => (p.condition === supersededAllowPolicy(pd, "s2-relay-close-bound").condition ? { ...p, policyName: "tax-alpha-allow-enr_vectorD01-s2" } : p));
@@ -77,27 +103,27 @@ describe("verifyPosition", () => {
     expect(failed(r)).toEqual(["allow_matches"]);
   });
 
-  it("half-finished security update (s3 and s1 both installed): passes the s3 check but warns that s1 still widens it", () => {
+  it("half-finished security update (s5 and s1 both installed): passes the s5 check but warns that s1 still widens it", () => {
     const s1: InstalledPolicy = { policyName: "tax-alpha-allow-enr_vectorA01", effect: "EFFECT_ALLOW", consensus: expected.allow.consensus, condition: supersededAllowPolicy(params, "s1-agent-v9-swap").condition };
-    const pol = base().map((p) => (p.condition === expected.allow.condition ? { ...p, policyName: "tax-alpha-allow-enr_vectorA01-s3" } : p));
+    const pol = base().map((p) => (p.condition === expected.allow.condition ? { ...p, policyName: "tax-alpha-allow-enr_vectorA01-s5" } : p));
     const r = verifyPosition(params, [...pol, s1]);
     expect(r.ok).toBe(true);
     expect(r.superseded).toBe(true);
-    expect(r.generation).toBe("s3");
+    expect(r.generation).toBe("s5");
     expect(r.supersededGenerations).toEqual(["s1"]);
     expect(r.checks.some((c) => c.id === "allow_superseded" && c.status === "warn" && c.message.includes(SUPERSEDED_MESSAGES.s1))).toBe(true);
-    expect(r.checks.some((c) => c.id === "allow_name")).toBe(false); // the -s3 name is accepted
+    expect(r.checks.some((c) => c.id === "allow_name")).toBe(false); // the -s5 name is accepted
   });
 
-  it("half-finished security update (s3 and s2 both installed): passes the s3 check but warns that s2 still widens it", () => {
-    const s2: InstalledPolicy = { policyName: "tax-alpha-allow-enr_vectorA01-s2", effect: "EFFECT_ALLOW", consensus: expected.allow.consensus, condition: supersededAllowPolicy(params, "s2-relay-close-bound").condition };
-    const pol = base().map((p) => (p.condition === expected.allow.condition ? { ...p, policyName: "tax-alpha-allow-enr_vectorA01-s3" } : p));
-    const r = verifyPosition(params, [...pol, s2]);
+  it("half-finished security update (s5 and s4 both installed): passes the s5 check but warns that s4 still widens it", () => {
+    const s4: InstalledPolicy = { policyName: "tax-alpha-allow-enr_vectorA01-s4", effect: "EFFECT_ALLOW", consensus: expected.allow.consensus, condition: supersededAllowPolicy(params, "s4-dflow-names-narrowed").condition };
+    const pol = base().map((p) => (p.condition === expected.allow.condition ? { ...p, policyName: "tax-alpha-allow-enr_vectorA01-s5" } : p));
+    const r = verifyPosition(params, [...pol, s4]);
     expect(r.ok).toBe(true);
-    expect(r.generation).toBe("s3");
-    expect(r.supersededGenerations).toEqual(["s2"]);
+    expect(r.generation).toBe("s5");
+    expect(r.supersededGenerations).toEqual(["s4"]);
     expect(failed(r)).toEqual([]);
-    expect(r.checks.some((c) => c.id === "allow_superseded" && c.message.includes(SUPERSEDED_MESSAGES.s2))).toBe(true);
+    expect(r.checks.some((c) => c.id === "allow_superseded" && c.message.includes(SUPERSEDED_MESSAGES.s4))).toBe(true);
   });
 
   it("fails the tampered example export (an extra SOL redemption destination)", () => {

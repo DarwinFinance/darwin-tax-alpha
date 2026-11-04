@@ -168,10 +168,13 @@ for (const e of MANIFEST) {
  *   position-b — the ALLOW's SOL-redemption destinations carry one extra (attacker) wallet: FAILS.
  *   position-c — a position set up before 2026-11-03: its ALLOW is the SUPERSEDED s1 text: WARNS (superseded).
  *   position-d — a position set up on 2026-11-03 before the s3 release: its ALLOW is the SUPERSEDED s2 text: WARNS.
+ *   position-e — a position set up on 2026-11-04 before the s5 release: its ALLOW is the SUPERSEDED s4 text: WARNS.
  */
 const ATTACKER_PLACEHOLDER = "E2zF382BRWbzYQYgHVeUUEDrn1mpib7ZzyG8RjRFTgHw";
-function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Record<string, unknown> }, older: Record<"s1" | "s2", Record<string, unknown>>) {
-  const allow = v === "position-c" ? { ...older.s1 } : v === "position-d" ? { ...older.s2 } : { ...e.allow };
+type Older = "s1" | "s2" | "s3" | "s4";
+const OLDER_FOR: Readonly<Record<string, Older>> = { "position-c": "s1", "position-d": "s2", "position-e": "s4" };
+function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Record<string, unknown> }, older: Record<Older, Record<string, unknown>>) {
+  const allow = OLDER_FOR[v] ? { ...older[OLDER_FOR[v]!] } : { ...e.allow };
   if (v === "position-b") {
     const c = String(allow.condition);
     const at = c.lastIndexOf("j.accounts[1].account_key in ['");
@@ -185,7 +188,9 @@ function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Rec
       ? ["5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f01", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f02", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f03"]
       : v === "position-c"
         ? ["a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a01", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a02", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a03"]
-        : ["fb4307b6-9d09-493e-b57c-c4b9634e9501", "fb4307b6-9d09-493e-b57c-c4b9634e9502", "fb4307b6-9d09-493e-b57c-c4b9634e9503"];
+        : v === "position-d"
+          ? ["fb4307b6-9d09-493e-b57c-c4b9634e9501", "fb4307b6-9d09-493e-b57c-c4b9634e9502", "fb4307b6-9d09-493e-b57c-c4b9634e9503"]
+          : ["6e2d8a41-57c3-4b9e-a0f6-3d1c9e8b7e01", "6e2d8a41-57c3-4b9e-a0f6-3d1c9e8b7e02", "6e2d8a41-57c3-4b9e-a0f6-3d1c9e8b7e03"];
   return {
     policies: [
       { policyId: ids[0], policyName: allow.policyName, effect: allow.effect, consensus: allow.consensus, condition: allow.condition, notes: allow.notes },
@@ -196,7 +201,7 @@ function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Rec
 }
 
 // ── 4: permission text, upstream vs this repository, byte for byte ───────────────────────────────────
-const vectors = ["position-a", "position-b", "position-c", "position-d"];
+const vectors = ["position-a", "position-b", "position-c", "position-d", "position-e"];
 try {
   const upAllow = await import(join(UP, "src/lib/strategy/custody/strategy-allow.ts"));
   const upSetup = await import(join(UP, "src/lib/strategy/custody/setup.ts"));
@@ -216,9 +221,9 @@ try {
     const mine = ours.expectedPositionPolicies(params);
     if (JSON.stringify(mine) !== JSON.stringify(expected)) fail(`permission text for ${v}: this repository's renderer differs from upstream`);
     // Every superseded generation the verifier recognises, rendered by upstream's own generation parameter.
-    if (upAllow.CURRENT_STRATEGY_ALLOW_GENERATION !== "s3-dflow-accounts-bound") fail(`upstream's current strategy generation is '${upAllow.CURRENT_STRATEGY_ALLOW_GENERATION}', not s3 — port it`);
-    const older = {} as Record<"s1" | "s2", Record<string, unknown>>;
-    for (const [short, g] of [["s1", "s1-agent-v9-swap"], ["s2", "s2-relay-close-bound"]] as const) {
+    if (upAllow.CURRENT_STRATEGY_ALLOW_GENERATION !== "s5-jupiter-only") fail(`upstream's current strategy generation is '${upAllow.CURRENT_STRATEGY_ALLOW_GENERATION}', not s5 — port it`);
+    const older = {} as Record<Older, Record<string, unknown>>;
+    for (const [short, g] of [["s1", "s1-agent-v9-swap"], ["s2", "s2-relay-close-bound"], ["s3", "s3-dflow-accounts-bound"], ["s4", "s4-dflow-names-narrowed"]] as const) {
       const upOld = sub(upAllow.strategyAllowCondition(upArgs, g));
       if (upOld.includes(upRelay)) throw new Error(`relay substitution failed (${short})`);
       older[short] = { ...expected.allow, condition: upOld };

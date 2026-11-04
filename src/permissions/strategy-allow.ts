@@ -6,9 +6,10 @@
 // generation is installed as a new policy, and the old one deleted, by the in-app "Security update").
 // Three alternatives, OR'd:
 //
-//   SWAP          a dFlow (or Jupiter fallback) swap inside the position's own wallet — agent-spot-allow.ts —
-//                 and, from generation s2, every SPL Token instruction is a CloseAccount into the position
-//                 wallet itself (`strategyClosesToSelfClause`): no token-account close pays anyone else.
+//   SWAP          a Jupiter `shared_accounts_route` swap inside the position's own wallet, its output pinned to
+//                 the position's own token account (s5; agent-spot-allow.ts `jupiterOnlyBranchClauses`). Older
+//                 generations: a dFlow (or Jupiter fallback) swap, and from s2 to s4 every SPL Token instruction
+//                 is a CloseAccount into the position wallet itself (`strategyClosesToSelfClause`).
 //   TOKEN REDEEM  SPL `TransferChecked` (opcode 0c) ONLY, from the position wallet, into one of the user's own
 //                 associated token accounts (for the listed redemption mints, both token programs); optionally
 //                 a `CreateIdempotent` (01) of such an account, owned by one of the user's own wallets.
@@ -26,11 +27,19 @@
 //                         pays the position wallet. Inside a dFlow swap it bound ATA creates and dFlow `wrap_sol`
 //                         by instruction only, not by account: a create could be owned by another address, and a
 //                         `wrap_sol` could deposit into another address's existing wSOL account.
-//   s3-dflow-accounts-bound  CURRENT. s2 with the swap alternative on agent spot v11: inside the dFlow branch
+//   s3-dflow-accounts-bound  SUPERSEDED. s2 with the swap alternative on agent spot v11: inside the dFlow branch
 //                         every ATA create is owned by the position wallet (paid by it or the relay), and every
-//                         dFlow `wrap_sol` deposits into the position wallet's own wSOL account. Installed by every
-//                         position created from the night of 2026-11-03; an older position moves to it through the
-//                         in-app "Security update". Redemptions are carried over byte for byte.
+//                         dFlow `wrap_sol` deposits into the position wallet's own wSOL account. Still admitted dFlow
+//                         `open_order` (moves a caller-chosen amount of the wallet's SOL to a caller-chosen receiver)
+//                         and two dFlow instructions that pass the wallet's signature to a caller-chosen program.
+//   s4-dflow-names-narrowed  SUPERSEDED. s3 with the swap alternative on agent spot v12: the dFlow branch names only
+//                         swap, swap2, wrap_sol and unwrap_sol. Still admitted a dFlow `swap` whose output account is
+//                         another address's EXISTING token account (the output slot is route-dependent, so no policy
+//                         text can name it).
+//   s5-jupiter-only       CURRENT. The swap alternative is agent spot v13 ALONE (no dFlow branch, and no
+//                         `strategyClosesToSelfClause`: v13's own Token bound is narrower). Installed by every
+//                         position created from the afternoon of 2026-11-04; an older position moves to it through
+//                         the in-app "Security update". Redemptions are carried over byte for byte.
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { COMPUTE_BUDGET_BOUND } from "./compute-budget-bound";
@@ -57,10 +66,10 @@ export type StrategyAllowArgs = {
   /** Mints a token redemption may deliver (USDC plus the strategy's members at enrollment). */
   redemptionMints: readonly string[];
   /**
-   * Darwin's fee-paying relay wallet. It appears in the SWAP alternative only: Darwin pays transaction fees
-   * and the rent of a temporary wSOL account, and a swap may pay back that rent (at most 1,488,440 lamports,
-   * only in the transaction where the relay's create deposits it). Under s2 no token-account close may pay
-   * the relay. The same for every position, but supplied as a parameter (it is not published here).
+   * Darwin's fee-paying relay wallet. It appears in the SWAP alternative only, as an allowed PAYER of a token
+   * account the swap creates for the position (the rent goes into the position's own account). Under s5 nothing
+   * may pay the relay; s1–s4 allowed a bounded rent payback. The same for every position, but supplied as a
+   * parameter (it is not published here).
    */
   darwinRelayWallet: string;
 };
@@ -76,16 +85,23 @@ function validate(args: StrategyAllowArgs): void {
 }
 
 /** The strategy ALLOW's generations, oldest first. */
-export type StrategyAllowGeneration = "s1-agent-v9-swap" | "s2-relay-close-bound" | "s3-dflow-accounts-bound";
-export const ALL_STRATEGY_ALLOW_GENERATIONS: readonly StrategyAllowGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound", "s3-dflow-accounts-bound"];
+export type StrategyAllowGeneration = "s1-agent-v9-swap" | "s2-relay-close-bound" | "s3-dflow-accounts-bound" | "s4-dflow-names-narrowed" | "s5-jupiter-only";
+export const ALL_STRATEGY_ALLOW_GENERATIONS: readonly StrategyAllowGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound", "s3-dflow-accounts-bound", "s4-dflow-names-narrowed", "s5-jupiter-only"];
 /** What every new position installs, and what the "Security update" moves an older position to. */
-export const CURRENT_STRATEGY_ALLOW_GENERATION: StrategyAllowGeneration = "s3-dflow-accounts-bound";
+export const CURRENT_STRATEGY_ALLOW_GENERATION: StrategyAllowGeneration = "s5-jupiter-only";
+
+/** s5: the strategy swaps ONLY through Jupiter (its swap alternative has no dFlow branch). */
+export function strategyGenerationIsJupiterOnly(g: StrategyAllowGeneration): boolean {
+  return g === "s5-jupiter-only";
+}
 
 /** The agent spot generation each strategy generation is pinned to. */
 const AGENT_SHAPE_FOR: Readonly<Record<StrategyAllowGeneration, SpotAllowShape>> = {
   "s1-agent-v9-swap": "v9-priority-fee-bound",
   "s2-relay-close-bound": "v10-relay-close-bound",
   "s3-dflow-accounts-bound": "v11-dflow-accounts-bound",
+  "s4-dflow-names-narrowed": "v12-dflow-names-narrowed",
+  "s5-jupiter-only": "v13-jupiter-only",
 };
 
 /**
@@ -101,7 +117,7 @@ export function strategyClosesToSelfClause(strategyWallet: string): string {
 /** SWAP — the agent spot ALLOW text, bound to the position wallet (agent-spot-allow.ts), at `generation`. */
 export function strategySwapClause(strategyWallet: string, darwinRelayWallet: string, generation: StrategyAllowGeneration = CURRENT_STRATEGY_ALLOW_GENERATION): string {
   const agent = spotAllowCondition(strategyWallet, darwinRelayWallet, AGENT_SHAPE_FOR[generation]);
-  return generation === "s1-agent-v9-swap" ? agent : `${agent} && ${strategyClosesToSelfClause(strategyWallet)}`;
+  return generation === "s1-agent-v9-swap" || strategyGenerationIsJupiterOnly(generation) ? agent : `${agent} && ${strategyClosesToSelfClause(strategyWallet)}`;
 }
 
 /** TOKEN REDEEM — TransferChecked to the user's own ATAs only. */
@@ -148,7 +164,7 @@ export function strategyAllowPolicyName(enrollmentId: string): string {
 
 /**
  * The name of the ALLOW a security update installs (Turnkey names are unique, and the old ALLOW is still
- * installed when the new one is created): `tax-alpha-allow-<id>-<current generation>` (`…-s3`).
+ * installed when the new one is created): `tax-alpha-allow-<id>-<current generation>` (`…-s5`).
  */
 export function strategyAllowUpgradePolicyName(setupId: string): string {
   return generationPolicyName(setupId, CURRENT_STRATEGY_ALLOW_GENERATION);
@@ -165,7 +181,7 @@ function generationPolicyName(setupId: string, g: StrategyAllowGeneration): stri
 
 /**
  * Every name a position's ALLOW may carry: as set up, or after any security update (`…-s2` from s1 → s2,
- * `…-s3` from s1/s2 → s3).
+ * `…-s3`, `…-s4`, `…-s5` from any older generation to that one).
  */
 export function strategyAllowPolicyNames(setupId: string): string[] {
   return [strategyAllowPolicyName(setupId), ...ALL_STRATEGY_ALLOW_GENERATIONS.slice(1).map((g) => generationPolicyName(setupId, g))];

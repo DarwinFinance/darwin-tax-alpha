@@ -124,12 +124,13 @@ export const MANIFEST: Entry[] = [
           "CURRENT_ALLOW_SHAPE", "turnkeyAllowConditionFor", "instructionPredicate", "boundPrograms", "programsFor",
           "shapeBindsSigningWallet", "shapeAdmitsFallbackRouters", "shapeBoundsPriorityFee", "shapeBoundsRelayCloses",
           "shapeAllowsRentPayback", "shapeAllowsAgentCloses", "shapeAllowsExistingPayback", "shapeBindsDflowAccounts",
+          "shapeIsJupiterOnly", "DFLOW_NAMES_DROPPED_AT_V12", "shapeNarrowsDflowNames", "shapeNamesFor",
         ],
       },
       { upstream: `${A}/dflow-account-bounds.ts`, decls: ["ATA_PROGRAM", "DFLOW_ROUTER", "DFLOW_WRAP_SOL_DISC", "SOLANA_ADDRESS", "assertAddress", "dflowAtaCreatesOwnedClause", "dflowWrapSolTargetClause"] },
       { upstream: `${A}/relay-rent-payback-policy.ts`, decls: ["AGENT_RENT_PAYBACK_MAX_LAMPORTS", "agentWsolAta", "relayRentPaybackClauses"] },
       { upstream: `${A}/agent-close-policy.ts`, decls: ["agentTokenCloseClause", "agentRelayCloseBoundClause"] },
-      { upstream: `${A}/router-fallback-policy.ts`, decls: ["JUPITER_SAR_ACCOUNTS", "V8_FALLBACK_ROUTERS", "AGENT_JUPITER_TRADE_PROGRAMS", "jupiterSpotBranchClauses", "fallbackBranch"] },
+      { upstream: `${A}/router-fallback-policy.ts`, decls: ["JUPITER_SAR_ACCOUNTS", "V8_FALLBACK_ROUTERS", "AGENT_JUPITER_TRADE_PROGRAMS", "jupiterSpotBranchClauses", "fallbackBranch", "AGENT_JUPITER_V13_TRADE_PROGRAMS", "jupiterOnlySpotClauses"] },
     ],
   },
   {
@@ -138,7 +139,7 @@ export const MANIFEST: Entry[] = [
       upstream: `${S}/custody/strategy-allow.ts`,
       decls: [
         "NO_LOOKUP_TABLES", "validate", "StrategyAllowGeneration", "ALL_STRATEGY_ALLOW_GENERATIONS", "CURRENT_STRATEGY_ALLOW_GENERATION",
-        "AGENT_SHAPE_FOR", "strategyClosesToSelfClause", "strategySwapClause", "strategyTokenRedeemClause", "strategySolRedeemClause",
+        "strategyGenerationIsJupiterOnly", "AGENT_SHAPE_FOR", "strategyClosesToSelfClause", "strategySwapClause", "strategyTokenRedeemClause", "strategySolRedeemClause",
         "strategyAllowCondition", "STRATEGY_ALLOW_NOTES", "strategyAllowPolicyName", "strategyAllowUpgradePolicyName",
         "strategyAllowGenerationPolicyName", "generationPolicyName", "strategyAllowPolicyNames", "buildStrategyAllowPolicyBody",
       ],
@@ -174,6 +175,7 @@ export const STATIC_FILES = [
   "test/vectors/position-b.params.json", "test/vectors/position-b.expected.json", "test/vectors/position-b.export.json",
   "test/vectors/position-c.params.json", "test/vectors/position-c.expected.json", "test/vectors/position-c.export.json",
   "test/vectors/position-d.params.json", "test/vectors/position-d.expected.json", "test/vectors/position-d.export.json",
+  "test/vectors/position-e.params.json", "test/vectors/position-e.expected.json", "test/vectors/position-e.export.json",
   "test/vectors/README.md",
 ];
 
