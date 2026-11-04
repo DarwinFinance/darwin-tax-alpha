@@ -3,3 +3,4 @@ export { verifyPosition, formatResult, firstDifference, SUPERSEDED_MESSAGES, typ
 export { runCli } from "./cli";
 export { fetchInstalledPolicies, turnkeyStamp, publicKeyOf, TURNKEY_API_ORIGIN, LIST_POLICIES_PATH, ENV_PRIVATE_KEY, ENV_PUBLIC_KEY } from "./fetch";
 export type { CliIo } from "./cli";
+export { parseKeyFile, expectedVerificationDeny, checkVerificationDeny, KEY_FILE_FORMAT, type VerificationKeyFile, type KeyFilePosition } from "./key-file";

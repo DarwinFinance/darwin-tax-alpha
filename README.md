@@ -186,14 +186,76 @@ Darwin's relay wallet is a parameter of the policy and is not listed here.
 
 ## Verify your position
 
-The verifier renders the ALLOW and DENY your position should have from its parameters, then compares them
-with the policies actually installed in your Turnkey sub-organization, byte for byte (effect, consensus and
+The verifier renders the ALLOW and DENY each of your positions should have from its parameters, then compares
+them with the policies actually installed in your Turnkey sub-organization, byte for byte (effect, consensus and
 condition). It also fails if any other ALLOW policy names the position's user, and warns about ALLOW policies
 whose approvers are not pinned to specific users.
 
-### 1. Write down the position's parameters
+The policies must come **straight from Turnkey**, read with **your own credential**, so you do not have to trust
+Darwin's servers for them. Turnkey policies are not public, and your passkey only works on Darwin's pages, so the
+verifier uses a **read-only verification key** that you create in your own account.
 
-Create a JSON file with the values Darwin shows you for the position:
+### 1. Create a read-only verification key
+
+1. Sign in to Darwin and open **https://darwin.finance/verify-tax-alpha** (for Darwin's beta, use
+   https://beta.darwin.finance/verify-tax-alpha). The page is not linked from the app; this README and the
+   verifier's `--help` are where it is listed.
+2. Press **Create verification key** and approve with your passkey. It takes two approvals, or three if you have
+   two-factor authentication on (your second factor approves the first step). Your browser then saves
+   `darwin-verification-key-<date>.json`.
+
+What the page creates in your Turnkey sub-organization, in this order:
+
+- a **DENY policy** whose consensus is the new key's public key
+  (`credentials.any(credential, credential.public_key == '<key>')`) and whose condition is `true`: Turnkey refuses
+  **every activity** that key submits. It cannot sign, send, export, approve or reject, change a policy, or add
+  API keys, sessions or passkeys, including to itself. The DENY is installed before the key exists, so the key
+  is never live without it.
+- a **non-root user** `darwin-verification-<date>-<6 hex>` holding the key, which **expires after 90 days**.
+  The user also holds one "anchor" key that no one can use: Turnkey refuses to create a user whose only
+  credential expires, so the anchor's public key is a nothing-up-my-sleeve point (the first
+  `02 || SHA-256("darwin-verification-anchor-v1:<user name>:<i>")` that is a valid P-256 point), and nobody,
+  including Darwin, knows its private key.
+
+A key like that can run Turnkey **queries** (`list_policies`, `whoami`, `list_wallets`), which are not activities
+and are what the verifier needs. The key pair is generated in your browser; the private key is written only into
+the file you download and is never sent to Darwin. The verifier checks the DENY itself every time it runs. Keep
+the file private: anyone who has it can read your account's policies, users and wallet addresses until the key
+expires or you revoke it. **Revoke it** on the same page ("Revoke verification keys"), with your passkey.
+
+The file holds your sub-organization id, the key, its expiry, and the public parameters of each of your Tax Alpha
+positions (wallet address, the position signer's Turnkey user id, the wallets and mints redemptions may pay,
+Darwin's relay wallet, and the position id the policy names are built from). Darwin includes a position's
+parameters only when re-rendering them reproduces the permission it installed for that position exactly.
+
+### 2. Run the verifier
+
+```sh
+git clone https://github.com/DarwinFinance/darwin-tax-alpha && cd darwin-tax-alpha
+bun install
+bun src/verify/cli.ts --key darwin-verification-key-<date>.json
+```
+
+The verifier signs one request with the key (Turnkey's standard API-key stamp), sends it to
+`https://api.turnkey.com/public/v1/query/list_policies` and nowhere else, refuses redirects, and never prints,
+logs or saves the private key. `--save policies.json` saves Turnkey's response. The code is
+`src/verify/key-file.ts`, `src/verify/fetch.ts` and `src/verify/cli.ts`.
+
+```
+PASS  this verification key is read-only: its DENY policy is installed exactly (every activity it submits is refused)
+
+── Solana Tax Alpha (enr_…)
+PASS  ALLOW policy 'tax-alpha-allow-…' matches the expected text byte for byte (effect, consensus, condition)
+PASS  DENY policy 'tax-alpha-deny-…' matches the expected text byte for byte (effect, consensus, condition)
+PASS  no other ALLOW policy names this position's signer
+
+RESULT: PASS — the installed permissions for this position are exactly the published templates.
+```
+
+### Without the key file
+
+You can also write a position's parameters yourself and pass Turnkey's `list_policies` response, however you
+obtained it:
 
 ```json
 {
@@ -206,63 +268,25 @@ Create a JSON file with the values Darwin shows you for the position:
 }
 ```
 
-`darwinRelayWallet` is the same for every position; it is also the fee payer you can see on your position's
-swap transactions in any Solana explorer.
-
-### 2. Get your installed policies from Turnkey
-
-The policies must come **straight from Turnkey**, read with **your own credential**, so you do not have to
-trust Darwin's servers for them. Turnkey policies are not public: they cannot be looked up by wallet address,
-and reading them takes a credential in your own Turnkey sub-organization. What you need is the response of
-Turnkey's read-only `list_policies` query for your sub-organization:
-
-```
-POST https://api.turnkey.com/public/v1/query/list_policies
-{ "organizationId": "<your sub-organization id>" }
-```
-
-- **Planned: a "Download my installed permissions" button in Darwin.** Your passkey was created at
-  darwin.finance and only works on Darwin's pages, so this button is how most people will do it. Its browser
-  code will send the request above from your browser directly to `api.turnkey.com`, signed with your passkey,
-  and save Turnkey's response unmodified. You can confirm in your browser's developer tools (Network tab) that
-  the request goes to `api.turnkey.com`, not to Darwin. Until it ships, use the advanced path.
-- **Advanced: your own read-only API key, no Darwin involvement.** Create an API key in your own Turnkey
-  sub-organization for a user that has no ALLOW policy. Such a key can run queries such as `list_policies` and
-  nothing else. (Creating it is a change to your sub-organization, so it needs your root credential, your
-  passkey, to approve it.) Then let the verifier fetch the policies itself, straight from `api.turnkey.com`:
-
-  ```sh
-  export TURNKEY_READONLY_API_PRIVATE_KEY=<the key's private half, hex>   # never printed or saved
-  bun src/verify/cli.ts --params position.json --fetch --organization <your sub-organization id> --save policies.json
-  ```
-
-  The verifier signs the one request with the key (Turnkey's standard API-key stamp), sends it to
-  `https://api.turnkey.com/public/v1/query/list_policies` and nowhere else, refuses redirects, and saves
-  Turnkey's response with `--save`. The code is `src/verify/fetch.ts`. You can also send the request with
-  Turnkey's CLI or any Turnkey SDK (`getPolicies`) and pass the saved JSON with `--export`.
-
-### 3. Run the verifier
-
 ```sh
-bun install
 bun src/verify/cli.ts --params position.json --export policies.json
+# or fetch with an API key of your own (never printed or saved):
+export TURNKEY_READONLY_API_PRIVATE_KEY=<the key's private half, hex>
+bun src/verify/cli.ts --params position.json --fetch --organization <your sub-organization id> --save policies.json
 ```
 
-```
-PASS  ALLOW policy 'tax-alpha-allow-…' matches the expected text byte for byte (effect, consensus, condition)
-PASS  DENY policy 'tax-alpha-deny-…' matches the expected text byte for byte (effect, consensus, condition)
-PASS  no other ALLOW policy names this position's signer
-
-RESULT: PASS — the installed permissions for this position are exactly the published templates.
-```
+`darwinRelayWallet` is the same for every position; it is also the fee payer you can see on your position's swap
+transactions in any Solana explorer. If you make your own API key, note that a non-root Turnkey user with no ALLOW
+policy can still create more API keys and passkeys for itself unless a DENY forbids it; the verification page
+installs that DENY for you.
 
 Exit codes:
 
 | Code | Meaning |
 |------|---------|
 | 0 | Pass: the installed policies are exactly the current (`s3`) templates. |
-| 1 | Mismatch: something differs (the output shows the first differing character), or another ALLOW names the position's signer. |
-| 2 | The input could not be read (or the policies could not be fetched). |
+| 1 | Mismatch: something differs (the output shows the first differing character), another ALLOW names the position's signer, or (with `--key`) the key's read-only DENY is not installed. |
+| 2 | The input could not be read, the policies could not be fetched (an expired or revoked key), or a position in the key file has no parameters (pass them with `--params`). |
 | 3 | Superseded: an installed ALLOW is exactly an older (`s1` or `s2`) template, and nothing else differs. Run the Security update in Darwin. |
 
 `--json` prints a machine-readable result (`ok`, `superseded`, `supersededGenerations`, `generation`, `checks`); `--print-expected`
@@ -277,7 +301,7 @@ The verifier is also a library: `verifyPosition(params, parsePolicyExport(json))
 ```
 src/rules/         strategy rules (pure functions)
 src/permissions/   the ALLOW / DENY templates, rendered from a position's parameters
-src/verify/        the verifier library and CLI (fetch.ts: the optional direct read from api.turnkey.com)
+src/verify/        the verifier library and CLI (fetch.ts: the direct read from api.turnkey.com; key-file.ts: the verification key file)
 test/upstream/     production's unit tests for the published rules (generated)
 test/              tests for the templates, the verifier and the hand-ported rules; test/vectors/ fixtures
 scripts/           sync.ts regenerates the mirror from a production checkout; scan.ts is the forbidden-content
@@ -291,7 +315,7 @@ bunx tsc --noEmit
 ```
 
 Requires [Bun](https://bun.sh) 1.2 or later. Runtime dependencies: `@solana/web3.js` and `@solana/spl-token`
-(for address derivation only). Nothing here connects to a network, except the verifier's optional `--fetch`,
+(for address derivation only). Nothing here connects to a network, except the verifier's `--key` / `--fetch`,
 which talks only to `api.turnkey.com`.
 
 Security issues: see [SECURITY.md](SECURITY.md). License: [MIT](LICENSE).
