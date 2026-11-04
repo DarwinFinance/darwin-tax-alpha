@@ -22,9 +22,15 @@
 //   s1-agent-v9-swap      SUPERSEDED. The swap alternative is the agent spot ALLOW v9. It let the position key
 //                         close the wallet's wrapped-SOL account to Darwin's relay (paying out the wrapped SOL),
 //                         and pay the relay a rent "payback" beside an idempotent create that put no rent in.
-//   s2-relay-close-bound  CURRENT. The swap alternative is the agent spot ALLOW v10 `&&` every Token close pays
-//                         the position wallet. Installed by every position created from 2026-11-03; an older
-//                         position moves to it through the in-app "Security update".
+//   s2-relay-close-bound  SUPERSEDED. The swap alternative is the agent spot ALLOW v10 `&&` every Token close
+//                         pays the position wallet. Inside a dFlow swap it bound ATA creates and dFlow `wrap_sol`
+//                         by instruction only, not by account: a create could be owned by another address, and a
+//                         `wrap_sol` could deposit into another address's existing wSOL account.
+//   s3-dflow-accounts-bound  CURRENT. s2 with the swap alternative on agent spot v11: inside the dFlow branch
+//                         every ATA create is owned by the position wallet (paid by it or the relay), and every
+//                         dFlow `wrap_sol` deposits into the position wallet's own wSOL account. Installed by every
+//                         position created from the night of 2026-11-03; an older position moves to it through the
+//                         in-app "Security update". Redemptions are carried over byte for byte.
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { COMPUTE_BUDGET_BOUND } from "./compute-budget-bound";
@@ -70,15 +76,16 @@ function validate(args: StrategyAllowArgs): void {
 }
 
 /** The strategy ALLOW's generations, oldest first. */
-export type StrategyAllowGeneration = "s1-agent-v9-swap" | "s2-relay-close-bound";
-export const ALL_STRATEGY_ALLOW_GENERATIONS: readonly StrategyAllowGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound"];
+export type StrategyAllowGeneration = "s1-agent-v9-swap" | "s2-relay-close-bound" | "s3-dflow-accounts-bound";
+export const ALL_STRATEGY_ALLOW_GENERATIONS: readonly StrategyAllowGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound", "s3-dflow-accounts-bound"];
 /** What every new position installs, and what the "Security update" moves an older position to. */
-export const CURRENT_STRATEGY_ALLOW_GENERATION: StrategyAllowGeneration = "s2-relay-close-bound";
+export const CURRENT_STRATEGY_ALLOW_GENERATION: StrategyAllowGeneration = "s3-dflow-accounts-bound";
 
 /** The agent spot generation each strategy generation is pinned to. */
 const AGENT_SHAPE_FOR: Readonly<Record<StrategyAllowGeneration, SpotAllowShape>> = {
   "s1-agent-v9-swap": "v9-priority-fee-bound",
   "s2-relay-close-bound": "v10-relay-close-bound",
+  "s3-dflow-accounts-bound": "v11-dflow-accounts-bound",
 };
 
 /**
@@ -141,15 +148,27 @@ export function strategyAllowPolicyName(enrollmentId: string): string {
 
 /**
  * The name of the ALLOW a security update installs (Turnkey names are unique, and the old ALLOW is still
- * installed when the new one is created): `tax-alpha-allow-<id>-s2`.
+ * installed when the new one is created): `tax-alpha-allow-<id>-<current generation>` (`…-s3`).
  */
 export function strategyAllowUpgradePolicyName(setupId: string): string {
-  return `${strategyAllowPolicyName(setupId)}-${CURRENT_STRATEGY_ALLOW_GENERATION.split("-")[0]}`;
+  return generationPolicyName(setupId, CURRENT_STRATEGY_ALLOW_GENERATION);
 }
 
-/** Every name a position's ALLOW may carry (as set up, or after its security update). */
+/** The name a security update TO generation `g` gives the position's ALLOW: `tax-alpha-allow-<id>-s<N>`. */
+export function strategyAllowGenerationPolicyName(setupId: string, g: StrategyAllowGeneration): string {
+  return generationPolicyName(setupId, g);
+}
+
+function generationPolicyName(setupId: string, g: StrategyAllowGeneration): string {
+  return `${strategyAllowPolicyName(setupId)}-${g.split("-")[0]}`;
+}
+
+/**
+ * Every name a position's ALLOW may carry: as set up, or after any security update (`…-s2` from s1 → s2,
+ * `…-s3` from s1/s2 → s3).
+ */
 export function strategyAllowPolicyNames(setupId: string): string[] {
-  return [strategyAllowPolicyName(setupId), strategyAllowUpgradePolicyName(setupId)];
+  return [strategyAllowPolicyName(setupId), ...ALL_STRATEGY_ALLOW_GENERATIONS.slice(1).map((g) => generationPolicyName(setupId, g))];
 }
 
 /** The CREATE_POLICY body for one position. Consensus binds the position's OWN user, never another. */

@@ -50,34 +50,40 @@ one changes.
 ### `src/permissions/agent-spot-allow.ts`
 Production renders the spot ALLOW for every venue and every historical policy generation from one registry
 (`agent/allow-condition.ts`, `agent/venue-registry.ts`, `agent/relay-rent-payback-policy.ts`,
-`agent/agent-close-policy.ts`, `agent/router-fallback-policy.ts`). This file renders only the two generations a
-Tax Alpha position can carry: `v10-relay-close-bound` (current; the payback rides only the relay's
-non-idempotent create, and a close to the relay must be of a fresh, relay-created, non-wSOL account) and
-`v9-priority-fee-bound` (superseded, rendered so the verifier can recognise an older position). Program sets
-and instruction discriminators are written out as named constants. **Darwin's relay wallet is a parameter**
-(`darwinRelayWallet`); production pins it as a constant. The output is byte-identical to production for both
-generations (checked by `scripts/sync.ts` and by the test vectors).
+`agent/agent-close-policy.ts`, `agent/router-fallback-policy.ts`, `agent/dflow-account-bounds.ts`). This file
+renders only the three generations a Tax Alpha position can carry: `v11-dflow-accounts-bound` (current; v10 plus,
+inside the dFlow branch, every ATA instruction's owner is the wallet and its payer the wallet or the relay, and
+every dFlow `wrap_sol` deposits into the wallet's own wSOL account), `v10-relay-close-bound` (superseded; the
+payback rides only the relay's non-idempotent create, and a close to the relay must be of a fresh, relay-created,
+non-wSOL account) and `v9-priority-fee-bound` (superseded). The two older ones are rendered so the verifier can
+recognise an older position. Program sets and instruction discriminators are written out as named constants.
+**Darwin's relay wallet is a parameter** (`darwinRelayWallet`, also passed to `dflowAtaCreatesOwnedClause`);
+production pins it as a constant. The output is byte-identical to production for all three generations (checked
+by `scripts/sync.ts` and by the test vectors).
 
 ### `src/permissions/strategy-allow.ts`
 Production: `strategy/custody/strategy-allow.ts`.
 - `strategySwapClause(strategyWallet, darwinRelayWallet, generation)` takes the relay as a parameter and calls
-  `spotAllowCondition` above instead of the production registry. `s2-relay-close-bound` (current) is agent
-  v10 `&&` `strategyClosesToSelfClause`; `s1-agent-v9-swap` (superseded) is agent v9.
+  `spotAllowCondition` above instead of the production registry. `s3-dflow-accounts-bound` (current) is agent
+  v11 `&&` `strategyClosesToSelfClause`; `s2-relay-close-bound` (superseded) is agent v10 `&&`
+  `strategyClosesToSelfClause`; `s1-agent-v9-swap` (superseded) is agent v9.
 - `StrategyAllowArgs` gains `darwinRelayWallet`.
 - Production computes the position's USDC token account and passes it to the registry, which ignores it for
   these generations; that unused computation is dropped.
-- Not published: `strategyAllowGenerationOf`, `upgradedStrategyAllowCondition` and
+- Not published: `strategyAllowGenerationOf`, `upgradedStrategyAllowCondition`,
+  `strategyAllowConditionAtGeneration`, `intermediateStrategyAllowGenerations` and
   `authoredStrategyAllowsForSetup`, which read an installed policy or Darwin's own setup records to plan and
-  clean up the security update. The verifier renders both generations from the position's parameters
-  instead; the security update carries the redemption alternatives over byte for byte, so the result is
-  the same text.
+  clean up the security update (including re-rendering every later generation's ALLOW, `-s2` and `-s3`, for a
+  position whose update stopped half-way). The verifier renders every generation from the position's
+  parameters instead; the security update carries the redemption alternatives over byte for byte, so the
+  result is the same text.
 - Everything else (generations, the closes-to-self clause, the two redemption clauses, validation, names
-  including the security update's `-s2` name, notes, consensus) is the production code.
+  including the security updates' `-s2` and `-s3` names, notes, consensus) is the production code.
 
 ### `src/permissions/position.ts` (new)
 Parameter validation; `expectedPositionPolicies`, which renders both policies for one position at the current
-generation (s2); `supersededAllowPolicy`, which renders the s1 ALLOW; and `acceptedAllowPolicyNames`. Not in
-production.
+generation (s3); `supersededAllowPolicy(params, generation)`, which renders the s1 or s2 ALLOW;
+`SUPERSEDED_GENERATIONS`; and `acceptedAllowPolicyNames`. Not in production.
 
 ### `src/verify/fetch.ts` (new)
 The verifier's optional `--fetch`: one stamped `list_policies` query to `api.turnkey.com` with the user's own
@@ -101,8 +107,8 @@ number-formatting engine that is not published, so `truncTo(x, dp)` with `dp > 0
 
 - `test/upstream/*.test.ts` are production's unit tests, generated (comments stripped, imports rewritten).
 - `test/permissions.test.ts` is adapted from production's `strategy-allow.test.ts` (its comparison against the
-  production registry is replaced by the byte-exact vectors), plus v9/v10 and s1/s2 differences, DENY and
-  parameter tests.
+  production registry is replaced by the byte-exact vectors), plus v9/v10/v11 and s1/s2/s3 differences, DENY
+  and parameter tests.
 - `test/rules-extra.test.ts`, `test/verify.test.ts` and `test/cli.test.ts` are new.
 
 ## Not published (by design)

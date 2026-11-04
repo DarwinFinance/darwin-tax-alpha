@@ -32,7 +32,14 @@ describe("darwin-tax-alpha-verify", () => {
   it("exits 3 with RESULT: WARNING on a superseded (s1) export", async () => {
     const r = await run(["--params", "position-c.params.json", "--export", "position-c.export.json"]);
     expect(r.code).toBe(3);
-    expect(r.out).toContain("RESULT: WARNING — s1: superseded, missing the relay-close bound; run the Security update in Darwin");
+    expect(r.out).toContain("RESULT: WARNING — s1: superseded, missing the relay-close bound and the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
+  });
+
+  it("exits 3 with RESULT: WARNING on a superseded (s2) export", async () => {
+    const r = await run(["--params", "position-d.params.json", "--export", "position-d.export.json"]);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("WARN  ALLOW policy 'tax-alpha-allow-enr_vectorD01' — s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
+    expect(r.out).toContain("RESULT: WARNING — s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin");
   });
 
   it("--json emits a machine-readable result", async () => {

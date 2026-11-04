@@ -63,8 +63,8 @@ export function validatePositionParams(p: unknown): asserts p is PositionParams 
 
 /**
  * The exact ALLOW and DENY a position with these parameters installs today (the CURRENT strategy generation,
- * `s2-relay-close-bound`). A position whose ALLOW was installed by its security update carries the same text
- * under the name `tax-alpha-allow-<id>-s2` (see `acceptedAllowPolicyNames`).
+ * `s3-dflow-accounts-bound`). A position whose ALLOW was installed by its security update carries the same text
+ * under the name `tax-alpha-allow-<id>-s3` (see `acceptedAllowPolicyNames`).
  */
 export function expectedPositionPolicies(params: PositionParams): ExpectedPositionPolicies {
   validatePositionParams(params);
@@ -81,13 +81,22 @@ export function expectedPositionPolicies(params: PositionParams): ExpectedPositi
 /** The strategy generation `expectedPositionPolicies` renders. */
 export const CURRENT_GENERATION: StrategyAllowGeneration = CURRENT_STRATEGY_ALLOW_GENERATION;
 
+/** The older generations the verifier recognises as SUPERSEDED (not a mismatch), oldest first. */
+export type SupersededGeneration = Exclude<StrategyAllowGeneration, "s3-dflow-accounts-bound">;
+export const SUPERSEDED_GENERATIONS: readonly SupersededGeneration[] = ["s1-agent-v9-swap", "s2-relay-close-bound"];
+
 /**
- * The ALLOW of an older, SUPERSEDED generation (`s1-agent-v9-swap`), which positions created before 2026-11-03
- * installed and keep until the user runs the in-app "Security update". Same redemption alternatives and
- * consensus; only the swap alternative differs (it lacks the relay-close bound). The verifier recognises it so
- * it can say "superseded" instead of "mismatch".
+ * The ALLOW of an older, SUPERSEDED generation, which a position keeps until the user runs the in-app
+ * "Security update":
+ *   s1-agent-v9-swap      positions created before 2026-11-03 (lacks the relay-close bound and the dFlow
+ *                         account bounds);
+ *   s2-relay-close-bound  positions created, or updated, on 2026-11-03 before the s3 release that night (lacks
+ *                         the dFlow `wrap_sol` / ATA-owner bounds).
+ * Same redemption alternatives and consensus; only the swap alternative differs. The verifier recognises these
+ * so it can say "superseded" instead of "mismatch". The name is the set-up name (an s2 ALLOW installed by an
+ * s1 → s2 update is named `…-s2`; names are informational).
  */
-export function supersededAllowPolicy(params: PositionParams, generation: Exclude<StrategyAllowGeneration, "s2-relay-close-bound"> = "s1-agent-v9-swap"): ExpectedPolicy {
+export function supersededAllowPolicy(params: PositionParams, generation: SupersededGeneration): ExpectedPolicy {
   validatePositionParams(params);
   const current = expectedPositionPolicies(params).allow;
   return {
@@ -99,7 +108,7 @@ export function supersededAllowPolicy(params: PositionParams, generation: Exclud
   };
 }
 
-/** Names the current ALLOW may carry: as set up, or as installed by the security update. Informational. */
+/** Names a position's ALLOW may carry: as set up, or as installed by any security update. Informational. */
 export function acceptedAllowPolicyNames(params: PositionParams): string[] {
   return params.enrollmentId !== undefined ? strategyAllowPolicyNames(params.enrollmentId) : [];
 }

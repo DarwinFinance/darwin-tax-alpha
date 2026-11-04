@@ -167,10 +167,11 @@ for (const e of MANIFEST) {
  *   position-a — the position's two policies plus an unrelated policy of the user's own: PASSES.
  *   position-b — the ALLOW's SOL-redemption destinations carry one extra (attacker) wallet: FAILS.
  *   position-c — a position set up before 2026-11-03: its ALLOW is the SUPERSEDED s1 text: WARNS (superseded).
+ *   position-d — a position set up on 2026-11-03 before the s3 release: its ALLOW is the SUPERSEDED s2 text: WARNS.
  */
 const ATTACKER_PLACEHOLDER = "E2zF382BRWbzYQYgHVeUUEDrn1mpib7ZzyG8RjRFTgHw";
-function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Record<string, unknown> }, s1Allow: Record<string, unknown>) {
-  const allow = v === "position-c" ? { ...s1Allow } : { ...e.allow };
+function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Record<string, unknown> }, older: Record<"s1" | "s2", Record<string, unknown>>) {
+  const allow = v === "position-c" ? { ...older.s1 } : v === "position-d" ? { ...older.s2 } : { ...e.allow };
   if (v === "position-b") {
     const c = String(allow.condition);
     const at = c.lastIndexOf("j.accounts[1].account_key in ['");
@@ -182,7 +183,9 @@ function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Rec
     ? ["0b8f3c52-6d0e-4f43-9a51-6f2f0d6a1a01", "0b8f3c52-6d0e-4f43-9a51-6f2f0d6a1a02", "0b8f3c52-6d0e-4f43-9a51-6f2f0d6a1a03"]
     : v === "position-b"
       ? ["5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f01", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f02", "5d1e2a90-3c7b-4e88-8f0a-2b9c4d6e7f03"]
-      : ["a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a01", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a02", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a03"];
+      : v === "position-c"
+        ? ["a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a01", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a02", "a37c91d4-0e52-4b6f-8d13-5f7e2c9b4a03"]
+        : ["fb4307b6-9d09-493e-b57c-c4b9634e9501", "fb4307b6-9d09-493e-b57c-c4b9634e9502", "fb4307b6-9d09-493e-b57c-c4b9634e9503"];
   return {
     policies: [
       { policyId: ids[0], policyName: allow.policyName, effect: allow.effect, consensus: allow.consensus, condition: allow.condition, notes: allow.notes },
@@ -193,7 +196,7 @@ function exampleExport(v: string, e: { allow: Record<string, unknown>; deny: Rec
 }
 
 // ── 4: permission text, upstream vs this repository, byte for byte ───────────────────────────────────
-const vectors = ["position-a", "position-b", "position-c"];
+const vectors = ["position-a", "position-b", "position-c", "position-d"];
 try {
   const upAllow = await import(join(UP, "src/lib/strategy/custody/strategy-allow.ts"));
   const upSetup = await import(join(UP, "src/lib/strategy/custody/setup.ts"));
@@ -213,12 +216,15 @@ try {
     const mine = ours.expectedPositionPolicies(params);
     if (JSON.stringify(mine) !== JSON.stringify(expected)) fail(`permission text for ${v}: this repository's renderer differs from upstream`);
     // Every superseded generation the verifier recognises, rendered by upstream's own generation parameter.
-    if (upAllow.CURRENT_STRATEGY_ALLOW_GENERATION !== "s2-relay-close-bound") fail(`upstream's current strategy generation is '${upAllow.CURRENT_STRATEGY_ALLOW_GENERATION}', not s2 — port it`);
-    const upS1 = sub(upAllow.strategyAllowCondition(upArgs, "s1-agent-v9-swap"));
-    if (upS1.includes(upRelay)) throw new Error("relay substitution failed (s1)");
-    const s1Allow = { ...expected.allow, condition: upS1 };
-    if (ours.supersededAllowPolicy(params, "s1-agent-v9-swap").condition !== upS1) fail(`superseded s1 permission text for ${v}: this repository's renderer differs from upstream`);
-    for (const [suffix, body] of [["expected", expected], ["export", exampleExport(v, expected, s1Allow)]] as const) {
+    if (upAllow.CURRENT_STRATEGY_ALLOW_GENERATION !== "s3-dflow-accounts-bound") fail(`upstream's current strategy generation is '${upAllow.CURRENT_STRATEGY_ALLOW_GENERATION}', not s3 — port it`);
+    const older = {} as Record<"s1" | "s2", Record<string, unknown>>;
+    for (const [short, g] of [["s1", "s1-agent-v9-swap"], ["s2", "s2-relay-close-bound"]] as const) {
+      const upOld = sub(upAllow.strategyAllowCondition(upArgs, g));
+      if (upOld.includes(upRelay)) throw new Error(`relay substitution failed (${short})`);
+      older[short] = { ...expected.allow, condition: upOld };
+      if (ours.supersededAllowPolicy(params, g).condition !== upOld) fail(`superseded ${short} permission text for ${v}: this repository's renderer differs from upstream`);
+    }
+    for (const [suffix, body] of [["expected", expected], ["export", exampleExport(v, expected, older)]] as const) {
       const path = join(ROOT, `test/vectors/${v}.${suffix}.json`);
       const text = JSON.stringify(body, null, 2) + "\n";
       const cur = existsSync(path) ? readFileSync(path, "utf8") : null;
@@ -247,7 +253,8 @@ for (const f of files) {
   }
 }
 
-if (!CHECK) {
+if (!CHECK && failures.length === 0) {
+  // Never record new hashes on a failed run: a moved pin must stay moved until --accept-pins.
   const out = { repository: "DarwinFinance/darwin", commit, note: "Files listed in scripts/sync-manifest.ts were generated from this commit.", sources, pins };
   writeFileSync(upstreamJsonPath, JSON.stringify(out, null, 2) + "\n");
   console.log(`UPSTREAM.json → ${commit}`);

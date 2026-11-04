@@ -22,11 +22,12 @@ bun scripts/sync.ts --upstream ../darwin --check    # verify only (exit 1 on any
    the manifest does not map is an error, so a new production dependency cannot be published by accident.
 3. **Hand ports are pinned.** Files written by hand (`hand`, listed in `CHANGES-FROM-UPSTREAM.md`) record a
    hash of each production declaration they mirror in `UPSTREAM.json`. If production changes one, the sync
-   fails until a person re-checks the port and re-runs with `--accept-pins`.
+   fails until a person re-checks the port and re-runs with `--accept-pins`. A failed run never rewrites
+   `UPSTREAM.json`, so a moved pin stays failing until it is accepted.
 4. **Permission text, byte for byte.** For every test vector, the ALLOW and DENY are rendered by the
    production builder and by this repository; they must be identical. That covers the current ALLOW generation
-   (`s2-relay-close-bound`) and the superseded one the verifier recognises (`s1-agent-v9-swap`), and the sync
-   fails if production's current generation is no longer `s2`. Darwin's real relay address is read from
+   (`s3-dflow-accounts-bound`) and the superseded ones the verifier recognises (`s2-relay-close-bound`,
+   `s1-agent-v9-swap`), and the sync fails if production's current generation is no longer `s3`. Darwin's real relay address is read from
    production at run time, replaced by the vector's placeholder, and never written to disk.
 5. **No stray files.** Every file in the repository must be in the manifest or in `STATIC_FILES`; every
    import must be relative or one of the allowed packages.
@@ -77,7 +78,7 @@ import the manifest does not map. That needs a person (next section).
 2. Run `bun scripts/sync.ts --upstream <checkout>` and read the failures.
 3. Re-port the hand-written files named (`CHANGES-FROM-UPSTREAM.md` lists what each mirrors). If the permission
    text changed, decide whether the verifier should recognise the old generation as superseded (as it does
-   for `s1`), and update the README's description of what the key can do.
+   for `s1` and `s2`), and update the README's description of what the key can do.
 4. Run `bun scripts/sync.ts --upstream <checkout> --accept-pins`, then `bun test`, `bunx tsc --noEmit`, and the
    scan above.
 5. Review the diff, update `CHANGES-FROM-UPSTREAM.md`, commit with the production commit sha in the message and

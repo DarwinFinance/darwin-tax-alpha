@@ -1,7 +1,7 @@
 export * from "./position";
 export {
   buildStrategyAllowPolicyBody, strategyAllowCondition, strategyAllowPolicyName, strategyAllowUpgradePolicyName,
-  strategyAllowPolicyNames, strategySwapClause, strategyClosesToSelfClause, strategyTokenRedeemClause,
+  strategyAllowPolicyNames, strategyAllowGenerationPolicyName, strategySwapClause, strategyClosesToSelfClause, strategyTokenRedeemClause,
   strategySolRedeemClause, STRATEGY_ALLOW_NOTES, ALL_STRATEGY_ALLOW_GENERATIONS, CURRENT_STRATEGY_ALLOW_GENERATION,
   type StrategyAllowArgs, type StrategyAllowGeneration,
 } from "./strategy-allow";

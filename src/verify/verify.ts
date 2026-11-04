@@ -3,11 +3,14 @@
  * should have installed: its ALLOW and its DENY, byte for byte (effect, consensus, condition), and no other
  * policy granting anything to the position's signer.
  *
- * The ALLOW is checked against the CURRENT generation (s2). An ALLOW that is byte for byte the SUPERSEDED
- * generation (s1) is a warning, not a mismatch: it is exactly what Darwin installed before 2026-11-03, but it
- * lacks the relay-close bound, and the user should run the in-app "Security update".
+ * The ALLOW is checked against the CURRENT generation (s3). An ALLOW that is byte for byte a SUPERSEDED
+ * generation (s1 or s2) is a warning, not a mismatch: it is exactly what Darwin installed earlier, but it lacks
+ * bounds the current generation has, and the user should run the in-app "Security update".
  */
-import { acceptedAllowPolicyNames, expectedPositionPolicies, supersededAllowPolicy, type ExpectedPolicy, type PositionParams } from "../permissions/position";
+import {
+  acceptedAllowPolicyNames, expectedPositionPolicies, supersededAllowPolicy, SUPERSEDED_GENERATIONS,
+  type ExpectedPolicy, type PositionParams, type SupersededGeneration,
+} from "../permissions/position";
 import type { InstalledPolicy } from "./export";
 
 export type CheckStatus = "pass" | "fail" | "warn" | "info";
@@ -15,14 +18,27 @@ export interface Check { id: string; status: CheckStatus; message: string; detai
 export interface VerifyResult {
   /** No check failed. (A superseded ALLOW is a warning, so `ok` can be true with `superseded` true.) */
   ok: boolean;
-  /** A superseded (s1) ALLOW for this position is installed, alone or beside the current one. */
+  /** A superseded (s1 or s2) ALLOW for this position is installed, alone or beside the current one. */
   superseded: boolean;
-  /** The ALLOW generation found: "s2" (current), "s1" (superseded only), or null (none matched). */
-  generation: "s2" | "s1" | null;
+  /** Which superseded generations are installed, oldest first. */
+  supersededGenerations: ShortGeneration[];
+  /** The newest ALLOW generation found: "s3" (current), "s2" / "s1" (superseded only), or null (none matched). */
+  generation: "s3" | ShortGeneration | null;
   checks: Check[];
 }
 
-export const SUPERSEDED_MESSAGE = "s1: superseded, missing the relay-close bound; run the Security update in Darwin";
+type ShortGeneration = "s1" | "s2";
+const SHORT: Record<SupersededGeneration, ShortGeneration> = { "s1-agent-v9-swap": "s1", "s2-relay-close-bound": "s2" };
+
+/** The warning for each superseded generation, naming what it is missing. */
+export const SUPERSEDED_MESSAGES: Readonly<Record<ShortGeneration, string>> = {
+  s1: "s1: superseded, missing the relay-close bound and the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin",
+  s2: "s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin",
+};
+const SUPERSEDED_DETAIL: Readonly<Record<ShortGeneration, string>> = {
+  s1: "It matches the superseded generation s1 byte for byte. s1 let the position's key close the position's wrapped-SOL account to Darwin's relay wallet, and (like s2) did not bind who owns a token account created inside a dFlow swap or where a dFlow wrap_sol deposits; s3 binds all three.",
+  s2: "It matches the superseded generation s2 byte for byte. s2 did not bind who owns a token account created inside a dFlow swap (the position's wallet could pay rent for an account another address owns) or where a dFlow wrap_sol deposits (it could wrap the position's SOL into another address's existing wSOL account); s3 binds both to the position's own accounts.",
+};
 
 /** Where two strings first differ, with a little context from each — for a readable mismatch report. */
 export function firstDifference(expected: string, actual: string): string {
@@ -69,30 +85,36 @@ function checkOne(kind: "ALLOW" | "DENY", want: ExpectedPolicy, installed: Insta
 
 export function verifyPosition(params: PositionParams, installed: InstalledPolicy[]): VerifyResult {
   const expected = expectedPositionPolicies(params);
-  const s1 = supersededAllowPolicy(params);
+  const superseded = SUPERSEDED_GENERATIONS.map((g) => ({ g: SHORT[g], policy: supersededAllowPolicy(params, g) }));
   const userId = params.strategyUserId;
-  const s1Installed = installed.filter((p) => same(p, s1));
-  const s2Installed = installed.filter((p) => same(p, expected.allow));
+  const currentInstalled = installed.filter((p) => same(p, expected.allow));
+  const supersededInstalled = superseded
+    .map(({ g, policy }) => ({ g, policy, found: installed.filter((p) => same(p, policy)) }))
+    .filter((x) => x.found.length > 0);
   const checks: Check[] = [];
   let reported: InstalledPolicy[] = [];
 
-  if (s2Installed.length === 0 && s1Installed.length > 0) {
-    // Exactly what Darwin installed before the relay-close bound: a warning, never a mismatch.
-    checks.push({ id: "allow_superseded", status: "warn", message: `ALLOW policy ${label(s1Installed[0]!)} — ${SUPERSEDED_MESSAGE}`, detail: "It matches the superseded generation (s1) byte for byte. s1 let the position's key close the position's wrapped-SOL account to Darwin's relay wallet; s2 does not." });
+  if (currentInstalled.length === 0 && supersededInstalled.length > 0) {
+    // Exactly what Darwin installed before a newer generation: a warning per generation, never a mismatch.
+    for (const { g, found } of supersededInstalled) {
+      checks.push({ id: "allow_superseded", status: "warn", message: `ALLOW policy ${label(found[0]!)} — ${SUPERSEDED_MESSAGES[g]}`, detail: SUPERSEDED_DETAIL[g] });
+    }
   } else {
-    const allow = checkOne("ALLOW", expected.allow, installed, userId, { names: acceptedAllowPolicyNames(params), alsoAccepted: [s1] });
+    const allow = checkOne("ALLOW", expected.allow, installed, userId, { names: acceptedAllowPolicyNames(params), alsoAccepted: superseded.map((x) => x.policy) });
     checks.push(...allow.checks);
     reported = allow.reported;
-    if (s2Installed.length > 0 && s1Installed.length > 0) {
-      // Turnkey ALLOWs add up: while the s1 one is installed, the key can still do everything s1 allows.
-      checks.push({ id: "allow_superseded", status: "warn", message: `the superseded ALLOW ${label(s1Installed[0]!)} is still installed beside the current one — ${SUPERSEDED_MESSAGE}` });
+    if (currentInstalled.length > 0) {
+      // Turnkey ALLOWs add up: while an older one is installed, the key can still do everything it allows.
+      for (const { g, found } of supersededInstalled) {
+        checks.push({ id: "allow_superseded", status: "warn", message: `the superseded ALLOW ${label(found[0]!)} is still installed beside the current one — ${SUPERSEDED_MESSAGES[g]}`, detail: SUPERSEDED_DETAIL[g] });
+      }
     }
   }
   const deny = checkOne("DENY", expected.deny, installed, userId);
   checks.push(...deny.checks);
 
   // Turnkey ALLOW policies are OR'd: any OTHER policy that names the position's signer could widen what it may do.
-  const isExpected = (p: InstalledPolicy) => same(p, expected.allow) || same(p, s1) || same(p, expected.deny);
+  const isExpected = (p: InstalledPolicy) => same(p, expected.allow) || superseded.some((x) => same(p, x.policy)) || same(p, expected.deny);
   const reportedSet = new Set([...reported, ...deny.reported]);
   const others = installed.filter((p) => !isExpected(p) && !reportedSet.has(p) && (p.consensus.includes(userId) || p.condition.includes(userId)));
   const otherAllows = others.filter((p) => p.effect === "EFFECT_ALLOW");
@@ -110,7 +132,9 @@ export function verifyPosition(params: PositionParams, installed: InstalledPolic
     checks.push({ id: "broad_allow", status: "warn", message: `ALLOW policy ${label(p)} does not pin its approvers to specific user ids; review whether it could apply to this position's signer`, detail: `consensus: ${p.consensus || "(empty)"}` });
   }
   const ok = checks.every((c) => c.status !== "fail");
-  return { ok, superseded: s1Installed.length > 0, generation: s2Installed.length > 0 ? "s2" : s1Installed.length > 0 ? "s1" : null, checks };
+  const supersededGenerations = supersededInstalled.map((x) => x.g);
+  const generation = currentInstalled.length > 0 ? "s3" : supersededGenerations.length > 0 ? supersededGenerations[supersededGenerations.length - 1]! : null;
+  return { ok, superseded: supersededGenerations.length > 0, supersededGenerations, generation, checks };
 }
 
 export function formatResult(r: VerifyResult): string {
@@ -119,7 +143,7 @@ export function formatResult(r: VerifyResult): string {
   lines.push("", !r.ok
     ? "RESULT: FAIL — the installed permissions differ from the published templates (see FAIL lines above)."
     : r.superseded
-      ? `RESULT: WARNING — ${SUPERSEDED_MESSAGE}. Nothing else differs from the published templates.`
+      ? `RESULT: WARNING — ${r.supersededGenerations.map((g) => SUPERSEDED_MESSAGES[g]).join("; ")}. Nothing else differs from the published templates.`
       : "RESULT: PASS — the installed permissions for this position are exactly the published templates.");
   return lines.join("\n");
 }

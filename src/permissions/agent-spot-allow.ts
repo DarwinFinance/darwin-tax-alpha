@@ -1,8 +1,9 @@
-// HAND-PORTED (see CHANGES-FROM-UPSTREAM.md). Mirrors the upstream agent spot ALLOW at the two generations a
-// Tax Alpha strategy ALLOW is pinned to: "v10-relay-close-bound" (current, strategy generation s2) and
-// "v9-priority-fee-bound" (superseded, strategy generation s1): `buildAgentAllowCondition` with
-// `venue: "spot"`, and the pieces it composes (venue predicate, relay rent payback, token close, relay-close
-// bound, Jupiter fallback branch, compute-budget bound). Upstream renders every venue and every historical
+// HAND-PORTED (see CHANGES-FROM-UPSTREAM.md). Mirrors the upstream agent spot ALLOW at the three generations a
+// Tax Alpha strategy ALLOW is pinned to: "v11-dflow-accounts-bound" (current, strategy generation s3),
+// "v10-relay-close-bound" (superseded, strategy generation s2) and "v9-priority-fee-bound" (superseded, strategy
+// generation s1): `buildAgentAllowCondition` with `venue: "spot"`, and the pieces it composes (venue predicate,
+// relay rent payback, token close, relay-close bound, dFlow account bounds, Jupiter fallback branch,
+// compute-budget bound). Upstream renders every venue and every historical
 // generation from one registry; this file renders only the texts a Tax Alpha position installs, in the same
 // order, so the output is byte-identical. scripts/sync.ts checks that equality against upstream on every sync.
 //
@@ -25,15 +26,20 @@ export const JUPITER_V6_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 export const NEVER_A_TABLE_KEY = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 export const WSOL_MINT = "So11111111111111111111111111111111111111112";
 
+/** Anchor discriminator of dFlow `wrap_sol` = sha256("global:wrap_sol")[0..8]. */
+export const DFLOW_WRAP_SOL_DISC = "2f3e9bac83cd25c9";
+
 /**
- * The dFlow router instructions the key may sign, by their 8-byte Anchor discriminator (hex). Every dFlow
- * instruction that takes a caller-chosen destination is absent, so a swap's output can only land in an
- * account derived from the signing wallet.
+ * The dFlow router instructions the key may sign, by their 8-byte Anchor discriminator (hex). They are bound by
+ * discriminator, not by account. Up to v10 that let `wrap_sol` deposit into an account that is not the wallet's;
+ * v11 binds it to the wallet's own wSOL account (`dflowWrapSolTargetClause`). A `swap` / `swap2` output account
+ * sits at a route-dependent position and is not bound by this text: dFlow's program re-derives the user's token
+ * accounts from the signing wallet on chain.
  */
 export const DFLOW_ALLOWED_INSTRUCTIONS: readonly (readonly [name: string, discriminatorHex: string])[] = [
   ["swap", "f8c69e91e17587c8"],
   ["swap2", "414b3f4ceb5b5b88"],
-  ["wrap_sol", "2f3e9bac83cd25c9"],
+  ["wrap_sol", DFLOW_WRAP_SOL_DISC],
   ["unwrap_sol", "63280e692d6bacc9"],
   ["open_order", "ce58588f268832e0"],
   ["create_referral_token_account_idempotent", "2ee829905525aaaf"],
@@ -66,9 +72,9 @@ export function agentWsolAta(agentWallet: string): string {
   return getAssociatedTokenAddressSync(new PublicKey(WSOL_MINT), new PublicKey(agentWallet), true, new PublicKey(SPL_TOKEN_PROGRAM)).toBase58();
 }
 
-/** The two agent spot generations a Tax Alpha position can carry (see strategy-allow.ts). */
-export type SpotAllowShape = "v9-priority-fee-bound" | "v10-relay-close-bound";
-export const CURRENT_SPOT_ALLOW_SHAPE: SpotAllowShape = "v10-relay-close-bound";
+/** The agent spot generations a Tax Alpha position can carry (see strategy-allow.ts). */
+export type SpotAllowShape = "v9-priority-fee-bound" | "v10-relay-close-bound" | "v11-dflow-accounts-bound";
+export const CURRENT_SPOT_ALLOW_SHAPE: SpotAllowShape = "v11-dflow-accounts-bound";
 
 /**
  * v10 only: a CloseAccount whose destination is Darwin's relay must close an account that is NOT the wallet's
@@ -82,7 +88,27 @@ export function relayCloseBoundClause(agentWallet: string, darwinRelayWallet: st
   return `solana.tx.instructions.filter(i, i.program_key == '${SPL_TOKEN_PROGRAM}' && i.accounts.count() == 3 && i.accounts[1].account_key == '${relay}').all(j, j.accounts[0].account_key != '${wsol}' && solana.tx.instructions.any(c, c.program_key == '${ATA_PROGRAM}' && c.instruction_data_hex == '00' && c.accounts.count() > 2 && c.accounts[0].account_key == '${relay}' && c.accounts[1].account_key == j.accounts[0].account_key && c.accounts[2].account_key == '${agentWallet}'))`;
 }
 
-/** The dFlow branch's venue predicate (upstream `turnkeyAllowConditionFor("spot", …)` at v9 / v10). */
+/**
+ * v11 only: every ATA instruction's owner (account [2]) is the wallet and its payer (account [0]) the wallet or
+ * Darwin's relay. The ATA program derives the created address from that owner and refuses any other, so a create
+ * can only make one of the wallet's own canonical token accounts. (Upstream `dflowAtaCreatesOwnedClause`.)
+ */
+export function dflowAtaCreatesOwnedClause(agentWallet: string, darwinRelayWallet: string): string {
+  return `solana.tx.instructions.filter(i, i.program_key == '${ATA_PROGRAM}').all(j, j.accounts.count() > 2 && ` +
+    `j.accounts[0].account_key in ['${agentWallet}', '${darwinRelayWallet}'] && j.accounts[2].account_key == '${agentWallet}')`;
+}
+
+/**
+ * v11 only: every dFlow `wrap_sol` deposits into account [1] == the wallet's canonical wSOL account. The data
+ * slice is read only inside the dFlow filter (Turnkey's `&&` / `||` do not short-circuit, and slicing a shorter
+ * instruction is an error). (Upstream `dflowWrapSolTargetClause`.)
+ */
+export function dflowWrapSolTargetClause(agentWallet: string): string {
+  return `solana.tx.instructions.filter(i, i.program_key == '${DFLOW_ROUTER}')` +
+    `.all(j, j.instruction_data_hex[0..16] != '${DFLOW_WRAP_SOL_DISC}' || j.accounts[1].account_key == '${agentWsolAta(agentWallet)}')`;
+}
+
+/** The dFlow branch's venue predicate (upstream `turnkeyAllowConditionFor("spot", …)` at v9 / v10 / v11). */
 export function dflowVenuePredicate(agentWallet: string, darwinRelayWallet: string, shape: SpotAllowShape = CURRENT_SPOT_ALLOW_SHAPE): string {
   const wsolAta = agentWsolAta(agentWallet);
   const relay = darwinRelayWallet;
@@ -109,8 +135,10 @@ export function dflowVenuePredicate(agentWallet: string, darwinRelayWallet: stri
     // Token program: CloseAccount (09) only, three accounts, closing into this wallet or the relay, by this wallet.
     `solana.tx.instructions.filter(i, i.program_key == '${SPL_TOKEN_PROGRAM}').all(j, j.instruction_data_hex == '09' && j.accounts.count() == 3 && (j.accounts[1].account_key == '${agentWallet}' || j.accounts[1].account_key == '${relay}') && j.accounts[2].account_key == '${agentWallet}')`,
   ];
-  // v10: a close to the relay only of a fresh, relay-created, non-wSOL account.
-  if (shape === "v10-relay-close-bound") clauses.push(relayCloseBoundClause(agentWallet, relay));
+  // v10 and later: a close to the relay only of a fresh, relay-created, non-wSOL account.
+  if (shape !== "v9-priority-fee-bound") clauses.push(relayCloseBoundClause(agentWallet, relay));
+  // v11: ATA creates own-account only; dFlow `wrap_sol` into the wallet's own wSOL account.
+  if (shape === "v11-dflow-accounts-bound") clauses.push(dflowAtaCreatesOwnedClause(agentWallet, relay), dflowWrapSolTargetClause(agentWallet));
   return clauses.join(" && ");
 }
 

@@ -123,9 +123,10 @@ export const MANIFEST: Entry[] = [
         decls: [
           "CURRENT_ALLOW_SHAPE", "turnkeyAllowConditionFor", "instructionPredicate", "boundPrograms", "programsFor",
           "shapeBindsSigningWallet", "shapeAdmitsFallbackRouters", "shapeBoundsPriorityFee", "shapeBoundsRelayCloses",
-          "shapeAllowsRentPayback", "shapeAllowsAgentCloses", "shapeAllowsExistingPayback",
+          "shapeAllowsRentPayback", "shapeAllowsAgentCloses", "shapeAllowsExistingPayback", "shapeBindsDflowAccounts",
         ],
       },
+      { upstream: `${A}/dflow-account-bounds.ts`, decls: ["ATA_PROGRAM", "DFLOW_ROUTER", "DFLOW_WRAP_SOL_DISC", "SOLANA_ADDRESS", "assertAddress", "dflowAtaCreatesOwnedClause", "dflowWrapSolTargetClause"] },
       { upstream: `${A}/relay-rent-payback-policy.ts`, decls: ["AGENT_RENT_PAYBACK_MAX_LAMPORTS", "agentWsolAta", "relayRentPaybackClauses"] },
       { upstream: `${A}/agent-close-policy.ts`, decls: ["agentTokenCloseClause", "agentRelayCloseBoundClause"] },
       { upstream: `${A}/router-fallback-policy.ts`, decls: ["JUPITER_SAR_ACCOUNTS", "V8_FALLBACK_ROUTERS", "AGENT_JUPITER_TRADE_PROGRAMS", "jupiterSpotBranchClauses", "fallbackBranch"] },
@@ -139,7 +140,7 @@ export const MANIFEST: Entry[] = [
         "NO_LOOKUP_TABLES", "validate", "StrategyAllowGeneration", "ALL_STRATEGY_ALLOW_GENERATIONS", "CURRENT_STRATEGY_ALLOW_GENERATION",
         "AGENT_SHAPE_FOR", "strategyClosesToSelfClause", "strategySwapClause", "strategyTokenRedeemClause", "strategySolRedeemClause",
         "strategyAllowCondition", "STRATEGY_ALLOW_NOTES", "strategyAllowPolicyName", "strategyAllowUpgradePolicyName",
-        "strategyAllowPolicyNames", "buildStrategyAllowPolicyBody",
+        "strategyAllowGenerationPolicyName", "generationPolicyName", "strategyAllowPolicyNames", "buildStrategyAllowPolicyBody",
       ],
     }],
   },
@@ -171,6 +172,7 @@ export const STATIC_FILES = [
   "test/vectors/position-a.params.json", "test/vectors/position-a.expected.json", "test/vectors/position-a.export.json",
   "test/vectors/position-b.params.json", "test/vectors/position-b.expected.json", "test/vectors/position-b.export.json",
   "test/vectors/position-c.params.json", "test/vectors/position-c.expected.json", "test/vectors/position-c.export.json",
+  "test/vectors/position-d.params.json", "test/vectors/position-d.expected.json", "test/vectors/position-d.export.json",
   "test/vectors/README.md",
 ];
 

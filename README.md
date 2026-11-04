@@ -77,40 +77,45 @@ is refused by Turnkey even if it comes from Darwin. An installed policy is never
 the ALLOW, the new version is installed as a new policy, and the old one removed, by an in-app step you
 approve with your passkey (the "Security update").
 
-### The guarantee (ALLOW generation `s2`, current since 2026-11-03)
+### The guarantee (ALLOW generation `s3`, current since the night of 2026-11-03)
 
 **The position's key can only:**
 
 1. **swap inside the position's own wallet, within the bounded swap rule**: a swap through dFlow's router (or
    Jupiter's v6 router as a fallback), signed with the position's wallet, using only an allow-list of swap
-   instructions. **Every token-account close in the transaction pays the position's own wallet.** And
+   instructions, where
+   - **every token-account close in the transaction pays the position's own wallet**;
+   - **every token account the transaction creates is owned by the position's wallet** (the Associated Token
+     Account program derives the new account's address from its owner, so a create can only make one of the
+     position's own token accounts), paid for by the position's wallet or Darwin's relay; and
+   - **dFlow's `wrap_sol` can only deposit into the position's own wrapped-SOL account**. And
 2. **redeem to your own wallets**: an SPL `TransferChecked` of the position's tokens into one of *your*
    wallets' token accounts (for the redemption mints listed when the position was opened), or a System
    `Transfer` of SOL from the position's wallet to one of *your* wallets.
 
-**So Darwin's key cannot transfer your tokens or SOL to Darwin or to anyone else.** The ways lamports can still
-leave the position in a transaction it signs are listed here, stated plainly:
+**So Darwin's key cannot move your tokens or SOL to Darwin or to anyone else.** The ways value can still leave
+the position, or sit outside the Turnkey policy text, in a transaction it signs are listed here, stated plainly:
 
 - **Priority fees, capped.** Every transaction the key may sign limits the priority fee to at most 65,535
   micro-lamports per compute unit (about 0.00009 SOL per transaction at the network's compute ceiling). That
   fee goes to Solana's validators, not to Darwin.
-- **Rent into your own accounts.** A token redemption, or a swap through Jupiter, may create a token account.
-  The rent for it (about 0.002 SOL) may be paid from the position's wallet, and it goes into the new account,
-  which belongs to your wallet (redemption) or to the position's wallet (swap).
-- **Rent for token accounts created inside a dFlow swap: not bound to an owner.** In the dFlow swap branch the
-  ALLOW admits Associated Token Account creations (`Create` / `CreateIdempotent`) without fixing who pays for
-  the new account or who owns it. A transaction signed by the position's key could therefore have the
-  position's wallet pay the rent, about 0.00204 SOL per account, of a token account owned by some other
-  address, whose owner could then close it and keep that rent. Each such account costs one account's rent,
-  but the number of them is not bounded by the ALLOW. Turnkey does not enforce an owner here; Darwin's own
-  server-side checks are not part of this guarantee. Likewise, dFlow's own allow-listed instructions are bound
-  by instruction, not by account, so accounts they create for a swap (for example an order or market-ledger
-  account) may be funded by the position's wallet.
+- **Rent into your own accounts.** A swap or a token redemption may create a token account. The rent for it
+  (about 0.002 SOL) may be paid from the position's wallet, and it goes into the new account, which belongs to
+  the position's wallet (swap) or to your wallet (redemption).
 - **Rent the relay put in, paid back.** Darwin pays network fees through a fee-paying relay wallet. When the
   relay creates the position's temporary wrapped-SOL account inside a swap, it pays that account's rent, and
   the same transaction may pay that rent back to the relay: at most 1,488,440 lamports (about 0.0015 SOL), and
   only alongside the relay's own *new-account* creation of that wrapped-SOL account. The position's value
   comes out even. No other transfer to the relay is allowed, and no token-account close can pay the relay.
+- **The swap's output account is bound by dFlow's program, not by the Turnkey policy text.** dFlow's `swap` /
+  `swap2` instructions are admitted by instruction, and the account a swap pays its output into sits at a
+  position that depends on the route, so the policy cannot name it. What binds it is dFlow's on-chain program,
+  which re-derives the user's token accounts from the signing wallet. Darwin measured that on 2026-09-18 and
+  re-simulated part of it on 2026-11-03, but the case of an *existing* account owned by someone else was not
+  re-proven against a fresh dFlow build (the captured route no longer executes). This is a residual: it rests on
+  dFlow's program, not on the policy. Likewise dFlow's `open_order`,
+  `create_referral_token_account_idempotent` and `init_market_ledger_idempotent` are admitted by instruction,
+  not by account, and a swap's economics (its route and minimum output) are not bounded by the policy.
 
 Both redemptions are refused if they use address lookup tables, which would hide accounts from the checks.
 
@@ -118,6 +123,8 @@ Both redemptions are refused if they use address lookup tables, which would hide
 
 - send tokens or SOL to anyone except your listed wallets;
 - close a token account to anyone but the position's own wallet;
+- create a token account owned by anyone but the position's wallet inside a dFlow swap, or wrap SOL into
+  anyone else's account;
 - approve a delegate, change an account's authority, or use any program outside the lists above;
 - sign arbitrary messages or raw payloads, or use Turnkey's send-transaction API;
 - add, remove or change API keys, passkeys or any other credential, its own included;
@@ -125,36 +132,48 @@ Both redemptions are refused if they use address lookup tables, which would hide
 - otherwise act in your sub-organization. In Turnkey's policy model a non-root user needs a policy for every
   activity; the one default exception, a user managing its own credentials, is what the DENY closes.
 
-### Positions created before 2026-11-03: run the "Security update"
+### Positions created before the night of 2026-11-03: run the "Security update"
 
-Positions opened before 2026-11-03 installed the previous ALLOW generation, **`s1`**. In `s1` a swap could
-also close one of the position wallet's token accounts to Darwin's relay wallet, and closing a wrapped-SOL
-account pays out its whole SOL balance; `s1` also allowed the relay rent payback beside a creation step that
-puts no rent in. Neither could reach anyone but Darwin's relay, and Darwin's signing service refused both,
-but that check was not something Turnkey enforced. `s2` closes both at the Turnkey layer.
+Positions opened before the night of 2026-11-03 installed an older ALLOW generation, and keep it until you
+update them:
 
-If you have an older position, open it in Darwin and run **Security update**. It installs the `s2` ALLOW
-(named `tax-alpha-allow-<position id>-s2`) and then removes the `s1` one. The redemption part of the policy
-(which wallets and tokens redemptions may pay) is carried over unchanged. The verifier reports an `s1` ALLOW
-as a warning ("s1: superseded, missing the relay-close bound; run the Security update in Darwin"), separate
-from a mismatch.
+- **`s2`** (positions opened, or updated, on 2026-11-03 before the `s3` release). Inside a dFlow swap, `s2` did
+  not bind who owns a token account the transaction creates, or where dFlow's `wrap_sol` deposits. A
+  transaction signed by the position's key could therefore have the position's wallet pay the rent of token
+  accounts owned by another address (about 0.002 SOL each), or wrap the position's SOL into another address's
+  existing wrapped-SOL account. Turnkey would have signed both. `s3` binds both at the Turnkey layer.
+- **`s1`** (positions opened before 2026-11-03). Everything `s2` lacks, and in addition a swap could close one of
+  the position wallet's token accounts to Darwin's relay wallet (closing a wrapped-SOL account pays out its
+  whole SOL balance), and could pay the relay a rent "payback" beside a creation step that puts no rent in.
+
+If you have an older position, open it in Darwin and run **Security update**. It installs the `s3` ALLOW
+(named `tax-alpha-allow-<position id>-s3`) and then removes the older one. The redemption part of the policy
+(which wallets and tokens redemptions may pay) is carried over unchanged. The verifier reports an older ALLOW
+as a warning, separate from a mismatch, naming what it is missing:
+
+- "s2: superseded, missing the dFlow wrap_sol/ATA-owner bounds; run the Security update in Darwin"
+- "s1: superseded, missing the relay-close bound and the dFlow wrap_sol/ATA-owner bounds; run the Security
+  update in Darwin"
 
 ### Read precisely
 
-The ALLOW's text is the guarantee; the sentences above summarize it. Three details matter:
+The ALLOW's text is the guarantee; the sentences above summarize it. Four details matter:
 
 - The rent payback relies on the relay's *new-account* creation, which fails if the account already exists.
   Turnkey cannot check that the creation comes *before* the payback in the transaction, or whether the address
   already held lamports before the account was created. Darwin's own server-side checks cover both, but they
   are not part of what Turnkey enforces. In either case the most that can move is 1,488,440 lamports per transaction,
   and only to Darwin's relay.
+- The dFlow-branch account bounds read accounts by position, while dFlow swaps may use address lookup tables.
+  Darwin measured that Turnkey keeps a table-loaded account in place (as a placeholder that matches no
+  address), so a lookup table cannot satisfy these bounds; that is a property of Turnkey's transaction parser.
 - The redemption alternatives bind every transfer to come *from* the position's wallet and go *to* your
   wallets, but do not fix which wallet Turnkey signs with. The key could ask Turnkey to sign a
   redemption-shaped transaction with another wallet of yours as the fee payer. No value can leave that
   wallet except the (capped) transaction fee and, for a token-account creation, rent that goes into your own
   new token account.
 - Turnkey `ALLOW` policies add up: any *other* ALLOW naming the position's user would widen what the key may
-  do, and that includes an `s1` ALLOW left beside the `s2` one. The verifier checks for that.
+  do, and that includes an `s1` or `s2` ALLOW left beside the `s3` one. The verifier checks for that.
 
 Program ids that appear in the policies are public: System `11111111111111111111111111111111`, SPL Token
 `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`, Token-2022 `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`,
@@ -241,15 +260,15 @@ Exit codes:
 
 | Code | Meaning |
 |------|---------|
-| 0 | Pass: the installed policies are exactly the current (`s2`) templates. |
+| 0 | Pass: the installed policies are exactly the current (`s3`) templates. |
 | 1 | Mismatch: something differs (the output shows the first differing character), or another ALLOW names the position's signer. |
 | 2 | The input could not be read (or the policies could not be fetched). |
-| 3 | Superseded: the installed ALLOW is exactly the older `s1` template, and nothing else differs. Run the Security update in Darwin. |
+| 3 | Superseded: an installed ALLOW is exactly an older (`s1` or `s2`) template, and nothing else differs. Run the Security update in Darwin. |
 
-`--json` prints a machine-readable result (`ok`, `superseded`, `generation`, `checks`); `--print-expected`
+`--json` prints a machine-readable result (`ok`, `superseded`, `supersededGenerations`, `generation`, `checks`); `--print-expected`
 prints the policies the parameters should produce. Try it on the examples in `test/vectors/`
-(`position-a` passes; `position-b` has an extra redemption wallet and fails; `position-c` is a position from
-before 2026-11-03 and reports superseded).
+(`position-a` passes; `position-b` has an extra redemption wallet and fails; `position-c` is an `s1` position from
+before 2026-11-03 and `position-d` an `s2` position from 2026-11-03; both report superseded).
 
 The verifier is also a library: `verifyPosition(params, parsePolicyExport(json))` from `src/verify`.
 
