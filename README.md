@@ -197,9 +197,8 @@ verifier uses a **read-only verification key** that you create in your own accou
 
 ### 1. Create a read-only verification key
 
-1. Sign in to Darwin and open **https://darwin.finance/verify-tax-alpha** (for Darwin's beta, use
-   https://beta.darwin.finance/verify-tax-alpha). The page is not linked from the app; this README and the
-   verifier's `--help` are where it is listed.
+1. Sign in to Darwin and open **https://darwin.finance/verify-tax-alpha**. The page is not linked from the app;
+   this README and the verifier's `--help` are where it is listed.
 2. Press **Create verification key** and approve with your passkey. It takes two approvals, or three if you have
    two-factor authentication on (your second factor approves the first step). Your browser then saves
    `darwin-verification-key-<date>.json`.

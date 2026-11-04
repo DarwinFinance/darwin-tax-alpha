@@ -56,9 +56,6 @@ const INTERNAL_EXEMPT: Record<string, string[]> = {
   "scripts/sync.ts": ["DARWIN_GAS_RELAY_WALLET", "pinned-relay"],
   // The manifest's list of production areas that may never be a source.
   "scripts/sync-manifest.ts": ["\\bsentry\\b"],
-  // Owner, 2026-11-04: "How to verify" names the beta host's verification-key page next to production's. Only the
-  // README, and only that host; the rule still holds everywhere else.
-  "README.md": ["beta\\.darwin\\.finance"],
 };
 
 const BASE58 = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])/g;
