@@ -1,6 +1,6 @@
 {
   "repository": "DarwinFinance/darwin",
-  "commit": "8582330ad4421e9bd3c30ffef6e1490ab8071a16",
+  "commit": "c4321e57927b9e689077d1ec565b92b6aea8ddd9",
   "note": "Files listed in scripts/sync-manifest.ts were generated from this commit.",
   "sources": {
     "src/lib/strategy/planner.ts": "ca3fa804fe956d9b076151ceecf98f976582992ff2caeed61553c59b11c185a1",
@@ -31,7 +31,7 @@
     "src/lib/agent/relay-rent-payback-policy.ts": "0d2c3d304a32c4c1c691d7407109d9f5e5fc15f738a7aceb650bf6d2f9d47392",
     "src/lib/agent/agent-close-policy.ts": "0a1e7d0cd63c3c59ed90fca8fac088352eb71ba87a9558d2734e3331e40e8cfc",
     "src/lib/agent/router-fallback-policy.ts": "e2410eecea6b1780913d459bf5d42797b790fd5567378727b78e254ac13029c6",
-    "src/lib/strategy/custody/strategy-allow.ts": "207385779abec0f9c6b5ccb9e7b95dd627245696deec95243ae5884141199804",
+    "src/lib/strategy/custody/strategy-allow.ts": "bcb453093e97d109713e0f0baf847709ed9ec01a3895e9b84747718e65cd2fc0",
     "src/lib/strategy/planner.test.ts": "f928d1d3dc12e0c7174d3d8858b4bd7ef822d24e06d17652f7911352c8f8d0d6",
     "src/lib/strategy/impact-split.test.ts": "053a6c9e2f87ae35593f70b7e0c85623d22164fc5ebf80721af82e1bcd6ab5e8",
     "src/lib/strategy/exit-planner.test.ts": "cafbf914200d3763f252b68911fb172d5a16b15ea4223eea5aec091620cd2717",
@@ -103,7 +103,9 @@
     "src/lib/strategy/custody/strategy-allow.ts#strategyTokenRedeemClause": "84e7e3bbd34c107bfc7e85b2f6b3b228c2b65ce7227b9fd941649f1d3eef4e15",
     "src/lib/strategy/custody/strategy-allow.ts#strategySolRedeemClause": "c22f37e212fd4547425e2511fc8d2d52596a6b307d922a96eb8e7bc6172f7bff",
     "src/lib/strategy/custody/strategy-allow.ts#strategyAllowCondition": "93a091bff20515527b76cf399c2adf074db5a419471675a42bf054c0ca1c3cef",
-    "src/lib/strategy/custody/strategy-allow.ts#STRATEGY_ALLOW_NOTES": "4739abdbe212b170acb285f7397f4bf558782584531d0becd409b83460fcba34",
+    "src/lib/strategy/custody/strategy-allow.ts#STRATEGY_ALLOW_NOTES": "f587fbff39ac759dd440e114d7989627d9762f742a75a4fcada86d7889c5f9a5",
+    "src/lib/strategy/custody/strategy-allow.ts#STRATEGY_ALLOW_NOTES_BEFORE_S5": "02e6660f30590c49402955fce27fff62f6968836d6d8074c0604c1122270781b",
+    "src/lib/strategy/custody/strategy-allow.ts#strategyAllowNotesFor": "5ed78bd3331db2fe0c5a7ca0f82db673ebc44933a3b0c866ca9bf293901cf7ec",
     "src/lib/strategy/custody/strategy-allow.ts#strategyAllowPolicyName": "30641601a1bdc26a282c1f78db35a5869a9f2fc6434d7d779ba45d24419c138f",
     "src/lib/strategy/custody/strategy-allow.ts#strategyAllowUpgradePolicyName": "cffe3100cd399e08479ba4b435eb95915e78250a268cd1659f0f074173e0a9d3",
     "src/lib/strategy/custody/strategy-allow.ts#strategyAllowGenerationPolicyName": "2f7324ae06204628b2466d9db76bc81a43c44333371c32871e4da7d29fea8c56",

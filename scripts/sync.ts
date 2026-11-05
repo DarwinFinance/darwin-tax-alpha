@@ -226,8 +226,11 @@ try {
     for (const [short, g] of [["s1", "s1-agent-v9-swap"], ["s2", "s2-relay-close-bound"], ["s3", "s3-dflow-accounts-bound"], ["s4", "s4-dflow-names-narrowed"]] as const) {
       const upOld = sub(upAllow.strategyAllowCondition(upArgs, g));
       if (upOld.includes(upRelay)) throw new Error(`relay substitution failed (${short})`);
-      older[short] = { ...expected.allow, condition: upOld };
-      if (ours.supersededAllowPolicy(params, g).condition !== upOld) fail(`superseded ${short} permission text for ${v}: this repository's renderer differs from upstream`);
+      const upOldNotes: string = upAllow.strategyAllowNotesFor(g);
+      older[short] = { ...expected.allow, condition: upOld, notes: upOldNotes };
+      const oursOld = ours.supersededAllowPolicy(params, g);
+      if (oursOld.condition !== upOld) fail(`superseded ${short} permission text for ${v}: this repository's renderer differs from upstream`);
+      if (oursOld.notes !== upOldNotes) fail(`superseded ${short} notes for ${v}: this repository's renderer differs from upstream`);
     }
     for (const [suffix, body] of [["expected", expected], ["export", exampleExport(v, expected, older)]] as const) {
       const path = join(ROOT, `test/vectors/${v}.${suffix}.json`);

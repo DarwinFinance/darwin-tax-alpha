@@ -5,7 +5,7 @@
 import { PublicKey } from "@solana/web3.js";
 import {
   buildStrategyAllowPolicyBody, strategyAllowCondition, strategyAllowPolicyName, strategyAllowPolicyNames,
-  CURRENT_STRATEGY_ALLOW_GENERATION, type StrategyAllowGeneration,
+  CURRENT_STRATEGY_ALLOW_GENERATION, type StrategyAllowGeneration, strategyAllowNotesFor,
 } from "./strategy-allow";
 import { buildStrategyDenyPolicyBody } from "./strategy-deny";
 
@@ -107,7 +107,7 @@ export function supersededAllowPolicy(params: PositionParams, generation: Supers
     effect: current.effect,
     consensus: current.consensus,
     condition: strategyAllowCondition(params, generation),
-    notes: current.notes,
+    notes: strategyAllowNotesFor(generation),
   };
 }
 

@@ -155,7 +155,16 @@ export function strategyAllowCondition(args: StrategyAllowArgs, generation: Stra
   return `(${strategySwapClause(args.strategyWallet, args.darwinRelayWallet, generation)}) || (${strategyTokenRedeemClause(args)}) || (${strategySolRedeemClause(args)})`;
 }
 
-export const STRATEGY_ALLOW_NOTES = "Tax Alpha strategy key: dFlow swaps in its own wallet, redemptions only to the user's own wallets. Installed by the user's passkey.";
+/** The ALLOW's human-readable notes at the current generation (s5). Descriptive only: no check compares them. */
+export const STRATEGY_ALLOW_NOTES = "Tax Alpha strategy key: Jupiter swaps whose output stays in its own wallet, redemptions only to the user's own wallets. Installed by the user's passkey.";
+
+/** The notes s1 to s4 ALLOWs were installed with (they admit dFlow swaps). An installed policy's notes never change. */
+export const STRATEGY_ALLOW_NOTES_BEFORE_S5 = "Tax Alpha strategy key: dFlow swaps in its own wallet, redemptions only to the user's own wallets. Installed by the user's passkey.";
+
+/** The notes that accurately describe an ALLOW of generation `g`. */
+export function strategyAllowNotesFor(g: StrategyAllowGeneration): string {
+  return strategyGenerationIsJupiterOnly(g) ? STRATEGY_ALLOW_NOTES : STRATEGY_ALLOW_NOTES_BEFORE_S5;
+}
 
 export function strategyAllowPolicyName(enrollmentId: string): string {
   if (!enrollmentId) throw new Error("strategyAllowPolicyName requires an enrollment id");

@@ -140,7 +140,7 @@ export const MANIFEST: Entry[] = [
       decls: [
         "NO_LOOKUP_TABLES", "validate", "StrategyAllowGeneration", "ALL_STRATEGY_ALLOW_GENERATIONS", "CURRENT_STRATEGY_ALLOW_GENERATION",
         "strategyGenerationIsJupiterOnly", "AGENT_SHAPE_FOR", "strategyClosesToSelfClause", "strategySwapClause", "strategyTokenRedeemClause", "strategySolRedeemClause",
-        "strategyAllowCondition", "STRATEGY_ALLOW_NOTES", "strategyAllowPolicyName", "strategyAllowUpgradePolicyName",
+        "strategyAllowCondition", "STRATEGY_ALLOW_NOTES", "STRATEGY_ALLOW_NOTES_BEFORE_S5", "strategyAllowNotesFor", "strategyAllowPolicyName", "strategyAllowUpgradePolicyName",
         "strategyAllowGenerationPolicyName", "generationPolicyName", "strategyAllowPolicyNames", "buildStrategyAllowPolicyBody",
       ],
     }],

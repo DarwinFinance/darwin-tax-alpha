@@ -91,11 +91,15 @@ Production: `strategy/custody/strategy-allow.ts`.
   result is the same text.
 - Everything else (generations, the closes-to-self clause, the two redemption clauses, validation, names
   including the security updates' `-s2` to `-s5` names, notes, consensus) is the production code. The notes
-  string still says "dFlow swaps"; it is production's text, unchanged, and is not part of what Turnkey enforces.
+  are production's text, unchanged: `STRATEGY_ALLOW_NOTES` describes the current s5 ALLOW ("Jupiter swaps whose
+  output stays in its own wallet"), `STRATEGY_ALLOW_NOTES_BEFORE_S5` the s1 to s4 ALLOWs ("dFlow swaps"), and
+  `strategyAllowNotesFor(g)` picks between them. Notes are descriptive only; Turnkey does not enforce them and
+  the verifier does not compare them.
 
 ### `src/permissions/position.ts` (new)
 Parameter validation; `expectedPositionPolicies`, which renders both policies for one position at the current
-generation (s5); `supersededAllowPolicy(params, generation)`, which renders the s1, s2, s3 or s4 ALLOW;
+generation (s5); `supersededAllowPolicy(params, generation)`, which renders the s1, s2, s3 or s4 ALLOW (with
+the notes production installed it with, `strategyAllowNotesFor(generation)`);
 `SUPERSEDED_GENERATIONS`; and `acceptedAllowPolicyNames`. Not in production.
 
 ### `src/verify/fetch.ts` (new)
