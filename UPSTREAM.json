@@ -1,6 +1,6 @@
 {
   "repository": "DarwinFinance/darwin",
-  "commit": "c4321e57927b9e689077d1ec565b92b6aea8ddd9",
+  "commit": "185b768b3f7bce830620cc091528d3a5e90fc287",
   "note": "Files listed in scripts/sync-manifest.ts were generated from this commit.",
   "sources": {
     "src/lib/strategy/planner.ts": "ca3fa804fe956d9b076151ceecf98f976582992ff2caeed61553c59b11c185a1",
@@ -11,7 +11,7 @@
     "src/lib/tax/holding-period.ts": "dbf31d274dc0ab685b750ab38ce2a6b9fe2723fffc04c334e03947f406df5d9d",
     "src/lib/tax/wash-window.ts": "9fcd03a4c5f31e9a217fd740396d1895b4970800e7647701a1cc5da6c1856036",
     "src/lib/tax/wash-sale.ts": "9c30864576a1cf0c63bbf94eaba6bfa8d151aba8d31201713f9926ee99266c6e",
-    "src/lib/tax/position-rollup.ts": "73b1f18e876561b338c7851341c3f0e5aec31109f7863eb3928095bc29910db6",
+    "src/lib/tax/position-rollup.ts": "41f70c6a3c82db4467b60495b02d57c391bd3559e0b3a7fc4fffde6a9bde53dd",
     "src/lib/equity-financials/is-xstock.ts": "bcd581ce958a6ffecf473f23667f7f77f2190d22cae202a89fd1f9bad2da163c",
     "src/lib/strategy/engine.ts": "c53a50c1e516de9d0ee059d8bf3a6ae931b2214735171d0ddaab2974de07de66",
     "src/lib/strategy/exit-engine.ts": "a98952c90b4cf4538bddcf2e956f5aefb2e83226d18d468de59a7a423b7c32b3",
